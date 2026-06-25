@@ -1,24 +1,33 @@
-import { Calendar, UserPlus } from 'lucide-react';
+import { UserPlus } from 'lucide-react';
+import { weeklySchedule, scheduleDays } from '../data/mockData';
 import './SchedulePage.css';
 
-const SchedulePage = () => {
-  const days = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-  
-  // Dummy data for a weekly schedule
-  const schedule = {
-    'ראשון': [
-      { id: 1, role: 'בוקר', time: '08:00 - 16:00', employee: 'דנה ר.' },
-      { id: 2, role: 'ערב', time: '16:00 - 00:00', employee: 'אבי כ.' },
-    ],
-    'שני': [
-      { id: 3, role: 'בוקר', time: '08:00 - 16:00', employee: 'רועי ל.' },
-      { id: 4, role: 'ערב', time: '16:00 - 00:00', employee: 'פנוי', missing: true },
-    ],
-    'שלישי': [
-      { id: 5, role: 'בוקר', time: '08:00 - 16:00', employee: 'שירה א.' },
-    ],
-  };
+const ShiftCard = ({ shift }) => (
+  <div className={`shift-card ${shift.missing ? 'shift-missing' : ''}`}>
+    <div className="shift-card-header">
+      <span className="shift-role">{shift.role}</span>
+      <span className="shift-time">{shift.time}</span>
+    </div>
+    <div className="shift-employee">
+      {shift.employee}
+    </div>
+  </div>
+);
 
+const DayColumn = ({ day, shifts }) => (
+  <div className="day-column">
+    <h3 className="day-title">{day}</h3>
+    <div className="day-shifts">
+      {shifts && shifts.length > 0 ? (
+        shifts.map(shift => <ShiftCard key={shift.id} shift={shift} />)
+      ) : (
+        <div className="empty-day">אין משמרות</div>
+      )}
+    </div>
+  </div>
+);
+
+const SchedulePage = () => {
   return (
     <div className="schedule-page container">
       <header className="page-header schedule-header">
@@ -33,27 +42,8 @@ const SchedulePage = () => {
       </header>
 
       <div className="schedule-grid">
-        {days.map(day => (
-          <div key={day} className="day-column">
-            <h3 className="day-title">{day}</h3>
-            <div className="day-shifts">
-              {schedule[day] ? (
-                schedule[day].map(shift => (
-                  <div key={shift.id} className={`shift-card ${shift.missing ? 'shift-missing' : ''}`}>
-                    <div className="shift-card-header">
-                      <span className="shift-role">{shift.role}</span>
-                      <span className="shift-time">{shift.time}</span>
-                    </div>
-                    <div className="shift-employee">
-                      {shift.employee}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="empty-day">אין משמרות</div>
-              )}
-            </div>
-          </div>
+        {scheduleDays.map(day => (
+          <DayColumn key={day} day={day} shifts={weeklySchedule[day]} />
         ))}
       </div>
     </div>
