@@ -41,12 +41,12 @@
 }
 
 .stat-danger .stat-icon {
-  background-color: #fee2e2;
+  background-color: var(--danger-light);
   color: var(--danger);
 }
 
 .stat-success .stat-icon {
-  background-color: #d1fae5;
+  background-color: var(--success-light);
   color: var(--success);
 }
 
@@ -129,12 +129,12 @@
 }
 
 .badge-danger {
-  background-color: #fee2e2;
+  background-color: var(--danger-light);
   color: var(--danger);
 }
 
 .badge-success {
-  background-color: #d1fae5;
+  background-color: var(--success-light);
   color: var(--success);
 }
 

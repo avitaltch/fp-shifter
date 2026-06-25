@@ -62,7 +62,7 @@
 
 .shift-missing {
   border-left-color: var(--danger);
-  background-color: #fef2f2;
+  background-color: var(--danger-lightest);
 }
 
 .shift-card-header {

@@ -5,7 +5,10 @@
   --bg-app: #F3F4F6;
   --bg-surface: #FFFFFF;
   --success: #059669;
+  --success-light: #d1fae5;
   --danger: #DC2626;
+  --danger-light: #fee2e2;
+  --danger-lightest: #fef2f2;
   
   /* Text Colors */
   --text-primary: #1F2937;
