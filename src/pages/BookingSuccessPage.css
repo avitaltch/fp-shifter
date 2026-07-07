@@ -1,0 +1,54 @@
+.success-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+  padding: 2rem;
+}
+
+.success-container {
+  background: var(--bg-surface);
+  border-radius: 12px;
+  padding: 3rem;
+  text-align: center;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  width: 100%;
+}
+
+.success-icon {
+  color: var(--success);
+  margin-bottom: 1rem;
+}
+
+.success-container h1 {
+  color: var(--text-primary);
+  margin-bottom: 0.5rem;
+}
+
+.booking-details {
+  background: var(--bg-app);
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin: 2rem 0;
+  text-align: right;
+}
+
+.booking-details p {
+  margin-bottom: 0.5rem;
+}
+
+.home-link {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  padding: 0.75rem 2rem;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.home-link:hover {
+  opacity: 0.9;
+}

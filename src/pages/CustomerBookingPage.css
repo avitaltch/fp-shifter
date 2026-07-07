@@ -1,0 +1,138 @@
+.booking-page {
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.booking-container {
+  background: var(--bg-surface);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.form-section {
+  margin-bottom: 2.5rem;
+}
+
+.form-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.25rem;
+  color: var(--primary);
+  margin-bottom: 1rem;
+}
+
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.service-card {
+  border: 2px solid var(--border-color, #E5E7EB);
+  border-radius: 8px;
+  padding: 1rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.service-card:hover {
+  border-color: var(--primary);
+}
+
+.service-card.selected {
+  border-color: var(--primary);
+  background-color: var(--secondary);
+}
+
+.service-info h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.price {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.check-icon {
+  color: var(--primary);
+}
+
+.datetime-selection {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.input-group {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.input-group input,
+.input-group select {
+  padding: 0.75rem;
+  border: 1px solid var(--border-color, #E5E7EB);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.booking-summary {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color, #E5E7EB);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.summary-details {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 1.1rem;
+}
+
+.summary-details span {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.submit-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.submit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.submit-btn:disabled {
+  background: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
