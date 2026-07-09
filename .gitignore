@@ -28,3 +28,8 @@ dist-ssr
 *.pdf
 
 task.md
+
+coverage/
+playwright-report/
+test-results/
+test_output.txt
