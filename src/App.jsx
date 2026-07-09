@@ -9,6 +9,8 @@ import CustomerBookingPage from './pages/CustomerBookingPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
 import EmployeeAvailabilityPage from './pages/EmployeeAvailabilityPage';
 import MyShiftsPage from './pages/MyShiftsPage';
+import AboutPage from './pages/AboutPage';
+import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
 
 function App() {
   return (
@@ -17,13 +19,32 @@ function App() {
       <main style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/manager/dashboard" element={<ManagerDashboardPage />} />
-          <Route path="/manager/assignment" element={<ShiftAssignmentPage />} />
           <Route path="/booking" element={<CustomerBookingPage />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
-          <Route path="/employee/availability" element={<EmployeeAvailabilityPage />} />
-          <Route path="/employee/shifts" element={<MyShiftsPage />} />
+          
+          <Route path="/manager/dashboard" element={
+            <ProtectedRoute allowedRoles={['Manager']}>
+              <ManagerDashboardPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/manager/assignment" element={
+            <ProtectedRoute allowedRoles={['Manager']}>
+              <ShiftAssignmentPage />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/employee/availability" element={
+            <ProtectedRoute allowedRoles={['Employee', 'Manager']}>
+              <EmployeeAvailabilityPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/employee/shifts" element={
+            <ProtectedRoute allowedRoles={['Employee', 'Manager']}>
+              <MyShiftsPage />
+            </ProtectedRoute>
+          } />
         </Routes>
       </main>
       <Footer />

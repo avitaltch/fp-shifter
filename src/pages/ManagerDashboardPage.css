@@ -1,8 +1,4 @@
-.dashboard-page {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
+/* Container styles removed, using PageContainer */
 
 .dashboard-header {
   display: flex;
@@ -133,4 +129,34 @@
   color: var(--text-secondary);
   margin: 0 0.5rem;
   flex-shrink: 0;
+}
+
+.future-section {
+  margin-top: 3rem;
+  opacity: 0.85;
+}
+
+.appointments-list.compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.compact-card {
+  padding: 1rem;
+  margin-bottom: 0;
+}
+
+.compact-card .apt-header {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.compact-details {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  background: var(--bg-app);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
 }

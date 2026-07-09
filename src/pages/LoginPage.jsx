@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { KeyRound, User } from 'lucide-react';
+import PageContainer from '../components/PageContainer/PageContainer';
 import './LoginPage.css';
 
 const LoginPage = () => {
@@ -45,16 +46,15 @@ const LoginPage = () => {
         navigate('/manager/dashboard'); // Or logic based on role
       }
     } catch (err) {
-      setError(err.message || 'אירעה שגיאה. נסי שוב.');
+      setError(err.message || 'אירעה שגיאה. יש לנסות שוב.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="login-page fade-in">
-      <div className="login-container">
-        <div className="login-header">
+    <PageContainer size="sm" className="login-page">
+      <div className="login-header">
           <KeyRound size={40} className="login-icon" />
           <h1>{isSignUp ? 'יצירת משתמש חדש' : 'התחברות למערכת'}</h1>
         </div>
@@ -64,8 +64,9 @@ const LoginPage = () => {
         <form onSubmit={handleAuth} className="login-form">
           {isSignUp && (
             <div className="input-group">
-              <label><User size={16} /> שם מלא</label>
+              <label htmlFor="fullName"><User size={16} /> שם מלא</label>
               <input
+                id="fullName"
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -75,8 +76,9 @@ const LoginPage = () => {
             </div>
           )}
           <div className="input-group">
-            <label>אימייל</label>
+            <label htmlFor="email">אימייל</label>
             <input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -85,8 +87,9 @@ const LoginPage = () => {
             />
           </div>
           <div className="input-group">
-            <label>סיסמה</label>
+            <label htmlFor="password">סיסמה</label>
             <input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -101,13 +104,12 @@ const LoginPage = () => {
         </form>
 
         <p className="toggle-auth">
-          {isSignUp ? 'כבר יש לך משתמש? ' : 'אין לך משתמש עדיין? '}
+          {isSignUp ? 'כבר קיים חשבון משתמש? ' : 'טרם נרשמת? '}
           <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="link-btn">
-            {isSignUp ? 'התחבר מפה' : 'הירשם עכשיו'}
+            {isSignUp ? 'כניסה למערכת' : 'הרשמה עכשיו'}
           </button>
         </p>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

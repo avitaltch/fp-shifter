@@ -1,0 +1,24 @@
+.empty-state-component {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  background: var(--bg-body, #F9FAFB);
+  border-radius: 8px;
+  border: 1px dashed var(--border-color, #E5E7EB);
+  margin: 1.5rem 0;
+}
+
+.empty-state-icon {
+  color: var(--text-secondary, #6B7280);
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-state-text {
+  color: var(--text-secondary, #4B5563);
+  font-size: 1.1rem;
+  margin: 0;
+}

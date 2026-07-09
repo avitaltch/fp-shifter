@@ -36,7 +36,7 @@ const Navbar = () => {
       <div className="navbar-container">
         <Link to="/" className="navbar-logo">
           <Scissors className="logo-icon" />
-          <span>BeautySync</span>
+          <span>ShiftSync</span>
         </Link>
         
         <div className="menu-icon" onClick={() => setIsOpen(!isOpen)}>

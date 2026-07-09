@@ -8,9 +8,9 @@ alter table appointment_items enable row level security;
 alter table availabilities enable row level security;
 
 -- Policies for users
-create policy "Users can view all users" 
+create policy "Authenticated users can view users" 
 on users for select 
-using (true);
+using (auth.role() = 'authenticated');
 
 create policy "Users can update their own profile" 
 on users for update 
@@ -25,9 +25,9 @@ on users for delete
 using (exists (select 1 from users where id = auth.uid() and role = 'Admin'));
 
 -- Policies for customers
-create policy "Anyone can view customers" 
+create policy "Authenticated users can view customers" 
 on customers for select 
-using (true);
+using (auth.role() = 'authenticated');
 
 create policy "Anyone can insert customers" 
 on customers for insert 
@@ -60,9 +60,9 @@ on employee_skills for all
 using (exists (select 1 from users where id = auth.uid() and role = 'Admin'));
 
 -- Policies for appointments
-create policy "Anyone can view appointments" 
+create policy "Authenticated users can view appointments" 
 on appointments for select 
-using (deleted_at is null);
+using (auth.role() = 'authenticated' and deleted_at is null);
 
 create policy "Anyone can insert appointments" 
 on appointments for insert 
@@ -77,9 +77,9 @@ on appointments for delete
 using (exists (select 1 from users where id = auth.uid() and role = 'Admin'));
 
 -- Policies for appointment_items
-create policy "Anyone can view appointment items" 
+create policy "Authenticated users can view appointment items" 
 on appointment_items for select 
-using (deleted_at is null);
+using (auth.role() = 'authenticated' and deleted_at is null);
 
 create policy "Anyone can insert appointment items" 
 on appointment_items for insert 
@@ -98,9 +98,9 @@ on appointment_items for delete
 using (exists (select 1 from users where id = auth.uid() and role = 'Admin'));
 
 -- Policies for availabilities
-create policy "Anyone can view availabilities" 
+create policy "Authenticated users can view availabilities" 
 on availabilities for select 
-using (true);
+using (auth.role() = 'authenticated');
 
 create policy "Users can manage their own availability" 
 on availabilities for all 

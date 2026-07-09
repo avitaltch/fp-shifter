@@ -1,15 +1,4 @@
-.my-shifts-page {
-  padding: 2rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.shifts-container {
-  background: var(--bg-surface);
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
+/* Container styles removed, using PageContainer */
 
 .tasks-list {
   display: flex;

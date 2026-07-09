@@ -1,18 +1,7 @@
-.about-page {
-  padding: 4rem 1rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.about-card {
-  padding: 3rem;
-}
-
-.about-card h1 {
-  font-size: 2.5rem;
+.about-page h1 {
+  text-align: center;
   color: var(--primary);
   margin-bottom: 2rem;
-  text-align: center;
 }
 
 .about-content {

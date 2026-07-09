@@ -1,22 +1,134 @@
-import { Users, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, CheckCircle, Clock } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import PageContainer from '../components/PageContainer/PageContainer';
+import EmptyState from '../components/EmptyState/EmptyState';
 import './ShiftAssignmentPage.css';
 
 const ShiftAssignmentPage = () => {
-  return (
-    <div className="assignment-page fade-in">
-      <div className="assignment-container">
-        <header className="page-header">
-          <Users size={32} className="header-icon" />
-          <h1>ניהול שיבוצים למשמרות</h1>
-          <p>מסך זה יאפשר למנהלת לשבץ עובדים באופן ידני במקרה הצורך, מעבר לאלגוריתם האוטומטי.</p>
-        </header>
+  const [unassignedItems, setUnassignedItems] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [assigningId, setAssigningId] = useState(null);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch unassigned items
+      const { data: items, error: itemsError } = await supabase
+        .from('appointment_items')
+        .select(`
+          id, start_time, end_time,
+          appointments!inner (visit_date, customers (first_name, last_name)),
+          service_types (name)
+        `)
+        .is('user_id', null)
+        .order('start_time', { ascending: true });
         
-        <div className="alert-box">
-          <AlertCircle size={24} />
-          <span>פיצ'ר תחת פיתוח (Coming Soon)</span>
+      if (itemsError) throw itemsError;
+
+      // Fetch employees
+      const { data: emps, error: empsError } = await supabase
+        .from('users')
+        .select('id, first_name, last_name')
+        .eq('role', 'Employee');
+        
+      if (empsError) throw empsError;
+
+      setUnassignedItems(items || []);
+      setEmployees(emps || []);
+    } catch (err) {
+      console.error(err);
+      setError("שגיאה בטעינת הנתונים.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleAssign = async (itemId, userId) => {
+    if (!userId) return;
+    setAssigningId(itemId);
+    
+    try {
+      const { error } = await supabase
+        .from('appointment_items')
+        .update({ user_id: userId })
+        .eq('id', itemId);
+        
+      if (error) throw error;
+      
+      // Remove from list
+      setUnassignedItems(prev => prev.filter(item => item.id !== itemId));
+    } catch (err) {
+      console.error(err);
+      alert("שגיאה בשיבוץ העובד.");
+    } finally {
+      setAssigningId(null);
+    }
+  };
+
+  return (
+    <PageContainer size="md">
+      <header className="page-header">
+        <Users size={32} className="header-icon" />
+        <h1>ניהול שיבוצים למשמרות</h1>
+        <p>מסך זה מאפשר לשבץ עובדים באופן ידני עבור טיפולים שלא שובצו אוטומטית.</p>
+      </header>
+        
+      {loading && <div className="loading-state">טוען נתונים...</div>}
+      {error && <div className="error-state">{error}</div>}
+      
+      {!loading && !error && unassignedItems.length === 0 && (
+        <EmptyState 
+          icon={CheckCircle}
+          text="מעולה! כל הטיפולים שובצו בהצלחה." 
+        />
+      )}
+
+      {!loading && !error && unassignedItems.length > 0 && (
+        <div className="unassigned-list">
+          {unassignedItems.map(item => (
+            <div key={item.id} className="unassigned-card">
+              <div className="unassigned-info">
+                <h3>{item.service_types?.name}</h3>
+                <p>
+                  <strong>לקוח/ה:</strong> {item.appointments?.customers?.first_name} {item.appointments?.customers?.last_name}
+                </p>
+                <div className="time-badge">
+                  <Clock size={14} />
+                  <span>
+                    {item.appointments?.visit_date} | {item.start_time.substring(0, 5)} - {item.end_time.substring(0, 5)}
+                  </span>
+                </div>
+              </div>
+              <div className="assign-action">
+                <select 
+                  onChange={(e) => handleAssign(item.id, e.target.value)}
+                  defaultValue=""
+                  disabled={assigningId === item.id}
+                  className="employee-select"
+                >
+                  <option value="" disabled>
+                    {assigningId === item.id ? 'משבץ...' : 'בחר/י עובד/ת לשיבוץ'}
+                  </option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.first_name} {emp.last_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
-    </div>
+      )}
+    </PageContainer>
   );
 };
 

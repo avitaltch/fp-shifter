@@ -1,15 +1,4 @@
-.booking-page {
-  padding: 2rem;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.booking-container {
-  background: var(--bg-surface);
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
+/* Container styles removed, using PageContainer */
 
 .subtitle {
   color: var(--text-secondary);
@@ -69,15 +58,22 @@
   color: var(--primary);
 }
 
-.datetime-selection {
-  display: flex;
+.datetime-selection, .customer-details {
+  display: grid;
   gap: 1.5rem;
-  flex-wrap: wrap;
+}
+
+.customer-details {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+@media (min-width: 600px) {
+  .datetime-selection {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 .input-group {
-  flex: 1;
-  min-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;

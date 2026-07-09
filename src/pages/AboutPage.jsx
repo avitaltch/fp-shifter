@@ -1,11 +1,11 @@
+import PageContainer from '../components/PageContainer/PageContainer';
 import './AboutPage.css';
 
 const AboutPage = () => {
   return (
-    <div className="about-page container">
-      <div className="card about-card">
-        <h1>אודות ShiftSync</h1>
-        <div className="about-content">
+    <PageContainer size="md" className="about-page">
+      <h1>אודות ShiftSync</h1>
+      <div className="about-content">
           <p>
             ShiftSync נולדה מתוך צורך אמיתי לנהל משמרות עובדים בצורה חכמה, מהירה וללא כאבי ראש.
             המערכת תוכננה במיוחד עבור מנהלים שרוצים להתמקד בעסק שלהם, ולא לבזבז שעות על סידור עבודה.
@@ -23,8 +23,7 @@ const AboutPage = () => {
             <li>התאמה מלאה למובייל - נהל את העסק מכל מקום.</li>
           </ul>
         </div>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

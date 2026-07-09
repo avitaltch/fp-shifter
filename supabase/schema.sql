@@ -70,14 +70,16 @@ create table appointment_items (
   id uuid primary key default uuid_generate_v4(),
   appointment_id uuid references appointments(id) on delete cascade not null,
   service_type_id uuid references service_types(id) on delete restrict not null,
-  user_id uuid references users(id) on delete restrict not null,
+  user_id uuid references users(id) on delete restrict,
   start_time time not null,
   end_time time not null,
   status text not null default 'Scheduled', -- Scheduled, In_Progress, Done
   notes text,
   created_at timestamp with time zone default now(),
   updated_at timestamp with time zone default now(),
-  deleted_at timestamp with time zone
+  deleted_at timestamp with time zone,
+  -- Ensure an employee isn't double-booked
+  constraint no_double_booking unique(user_id, start_time, end_time) 
 );
 
 -- Table: availabilities
@@ -96,8 +98,14 @@ create table availabilities (
 create or replace function public.handle_new_user() 
 returns trigger as $$
 begin
+  -- Hardcode 'Employee' to prevent privilege escalation from raw metadata
   insert into public.users (id, first_name, last_name, role)
-  values (new.id, split_part(new.raw_user_meta_data->>'full_name', ' ', 1), split_part(new.raw_user_meta_data->>'full_name', ' ', 2), coalesce(new.raw_user_meta_data->>'role', 'Employee'));
+  values (
+    new.id, 
+    coalesce(split_part(new.raw_user_meta_data->>'full_name', ' ', 1), 'New'), 
+    coalesce(split_part(new.raw_user_meta_data->>'full_name', ' ', 2), 'User'), 
+    'Employee'
+  );
   return new;
 end;
 $$ language plpgsql security definer;
