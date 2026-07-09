@@ -1,95 +1,153 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import LoginPage from './LoginPage';
 import { supabase } from '../lib/supabase';
 
+const { mockNavigate, mockUseLocation } = vi.hoisted(() => ({
+  mockNavigate: vi.fn(),
+  mockUseLocation: vi.fn(),
+}));
+
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useLocation: mockUseLocation,
+  };
+});
+
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
-      signUp: vi.fn(),
       signInWithPassword: vi.fn(),
-    }
-  }
+    },
+    from: vi.fn(),
+  },
 }));
 
-const renderWithRouter = (ui) => {
-  return render(<BrowserRouter>{ui}</BrowserRouter>);
+// supabase.from('users').select('role').eq('id', ...).single()
+function mockProfileFetch(profile) {
+  const single = vi.fn().mockResolvedValue({ data: profile, error: null });
+  const eq = vi.fn().mockReturnValue({ single });
+  const select = vi.fn().mockReturnValue({ eq });
+  supabase.from.mockReturnValue({ select });
+  return { select, eq, single };
+}
+
+const fillAndSubmit = () => {
+  fireEvent.change(screen.getByLabelText('אימייל'), {
+    target: { value: 'staff@example.com' },
+  });
+  fireEvent.change(screen.getByLabelText('סיסמה'), {
+    target: { value: 'secret123' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'התחברות' }));
 };
 
-describe('LoginPage Component', () => {
+describe('LoginPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  it('renders login form by default', () => {
-    renderWithRouter(<LoginPage />);
-    expect(screen.getByText('התחברות למערכת')).toBeInTheDocument();
-    expect(screen.getByLabelText(/אימייל/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/סיסמה/i)).toBeInTheDocument();
-  });
-
-  it('toggles to sign up form', () => {
-    renderWithRouter(<LoginPage />);
-    fireEvent.click(screen.getByRole('button', { name: /הרשמה/i }));
-    
-    expect(screen.getByText('יצירת משתמש חדש')).toBeInTheDocument();
-    expect(screen.getByLabelText(/שם מלא/i)).toBeInTheDocument();
-  });
-
-  it('calls signUp on submit when in signup mode', async () => {
-    supabase.auth.signUp.mockResolvedValue({ data: {}, error: null });
-    
-    renderWithRouter(<LoginPage />);
-    fireEvent.click(screen.getByText('הרשמה עכשיו')); // Switch to signup
-    
-    fireEvent.change(screen.getByLabelText(/שם מלא/i), { target: { value: 'Test User' } });
-    fireEvent.change(screen.getByLabelText(/אימייל/i), { target: { value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText(/סיסמה/i), { target: { value: 'password123' } });
-    
-    fireEvent.click(screen.getByRole('button', { name: 'הרשמה' }));
-    
-    await waitFor(() => {
-      expect(supabase.auth.signUp).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        password: 'password123',
-        options: {
-          data: {
-            full_name: 'Test User',
-            role: 'Employee'
-          }
-        }
-      });
+    mockUseLocation.mockReturnValue({ pathname: '/login', state: null });
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
     });
   });
 
-  it('calls signInWithPassword on submit when in login mode', async () => {
-    supabase.auth.signInWithPassword.mockResolvedValue({ data: {}, error: null });
-    
-    renderWithRouter(<LoginPage />);
-    
-    fireEvent.change(screen.getByLabelText(/אימייל/i), { target: { value: 'test@example.com' } });
-    fireEvent.change(screen.getByLabelText(/סיסמה/i), { target: { value: 'password123' } });
-    
-    fireEvent.click(screen.getByRole('button', { name: 'התחברות' }));
-    
+  it('renders a login-only form (no sign-up UI)', () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+
+    expect(screen.getByText('כניסת צוות')).toBeInTheDocument();
+    expect(screen.getByLabelText('אימייל')).toBeInTheDocument();
+    expect(screen.getByLabelText('סיסמה')).toBeInTheDocument();
+    expect(screen.queryByText(/הרשמה/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/חשבונות צוות נפתחים בהזמנה בלבד/)
+    ).toBeInTheDocument();
+  });
+
+  it('signs in and fetches the role from the users table (not user_metadata)', async () => {
+    const chain = mockProfileFetch({ role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fillAndSubmit();
+
     await waitFor(() => {
       expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        password: 'password123',
+        email: 'staff@example.com',
+        password: 'secret123',
       });
+    });
+
+    expect(supabase.from).toHaveBeenCalledWith('users');
+    expect(chain.select).toHaveBeenCalledWith('role');
+    expect(chain.eq).toHaveBeenCalledWith('id', 'user-1');
+  });
+
+  it('redirects Admins to /admin/dashboard', async () => {
+    mockProfileFetch({ role: 'Admin' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/admin/dashboard', { replace: true });
     });
   });
 
-  it('displays error message on auth failure', async () => {
-    supabase.auth.signInWithPassword.mockResolvedValue({ data: null, error: new Error('Invalid credentials') });
-    
-    renderWithRouter(<LoginPage />);
-    
-    fireEvent.change(screen.getByLabelText(/אימייל/i), { target: { value: 'wrong@example.com' } });
-    fireEvent.change(screen.getByLabelText(/סיסמה/i), { target: { value: 'wrongpass' } });
-    fireEvent.click(screen.getByRole('button', { name: 'התחברות' }));
-    
-    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
+  it('redirects Employees to /employee/shifts', async () => {
+    mockProfileFetch({ role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/employee/shifts', { replace: true });
+    });
+  });
+
+  it('prefers the protected page the user came from over the role home', async () => {
+    mockUseLocation.mockReturnValue({
+      pathname: '/login',
+      state: { from: { pathname: '/employee/availability' } },
+    });
+    mockProfileFetch({ role: 'Admin' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/employee/availability', { replace: true });
+    });
+  });
+
+  it('shows a friendly Hebrew error for bad credentials and does not navigate', async () => {
+    supabase.auth.signInWithPassword.mockResolvedValue({
+      data: null,
+      error: new Error('Invalid login credentials'),
+    });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fillAndSubmit();
+
+    expect(
+      await screen.findByText('אימייל או סיסמה שגויים.')
+    ).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('shows a generic Hebrew error for unexpected failures', async () => {
+    supabase.auth.signInWithPassword.mockRejectedValue(new Error('network down'));
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fillAndSubmit();
+
+    expect(
+      await screen.findByText('אירעה שגיאה. יש לנסות שוב.')
+    ).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

@@ -1,120 +1,169 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import EmployeeAvailabilityPage from './EmployeeAvailabilityPage';
-import { supabase } from '../lib/supabase';
+import { listMyAvailability, addAvailability, deleteAvailability } from '../lib/api';
+import { todayString, formatHebrewDate } from '../lib/dates';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn(),
-    },
-    from: vi.fn()
-  }
+vi.mock('../lib/api', () => ({
+  listMyAvailability: vi.fn(),
+  addAvailability: vi.fn(),
+  deleteAvailability: vi.fn(),
 }));
 
-describe('EmployeeAvailabilityPage', () => {
-  let insertMock;
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    session: { user: { id: 'user-1' } },
+    profile: { first_name: 'דנה', last_name: 'לוי', role: 'Employee' },
+    role: 'Employee',
+    loading: false,
+    signOut: vi.fn(),
+  }),
+}));
 
+const existingEntry = {
+  id: 'a1',
+  user_id: 'user-1',
+  available_date: '2099-01-05',
+  start_time: '10:00:00',
+  end_time: '12:00:00',
+};
+
+const submitForm = () => {
+  fireEvent.submit(
+    screen.getByRole('button', { name: /שמור זמינות/ }).closest('form')
+  );
+};
+
+describe('EmployeeAvailabilityPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    
-    // Mock user session
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user123' } } }
-    });
-
-    // Mock insert
-    insertMock = vi.fn().mockResolvedValue({ error: null });
-    supabase.from.mockReturnValue({
-      insert: insertMock
-    });
-
-    // Mock window.alert
-    vi.spyOn(window, 'alert').mockImplementation(() => {});
+    listMyAvailability.mockResolvedValue([existingEntry]);
   });
 
-  it('renders the form correctly', async () => {
-    await act(async () => {
-      render(<EmployeeAvailabilityPage />);
+  it('lists the existing availability for the logged-in user from today onwards', async () => {
+    render(<EmployeeAvailabilityPage />);
+
+    await waitFor(() => {
+      expect(listMyAvailability).toHaveBeenCalledWith('user-1', todayString());
     });
-    
-    expect(screen.getByText(/הזנת זמינות - אזור אישי/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /שמור זמינות/i })).toBeInTheDocument();
+    expect(
+      await screen.findByText(new RegExp(`${formatHebrewDate('2099-01-05')} · 10:00-\\s*12:00`))
+    ).toBeInTheDocument();
   });
 
-  it('shows alert if trying to submit without date', async () => {
-    await act(async () => {
-      render(<EmployeeAvailabilityPage />);
-    });
-    
-    // Initially the button is disabled if no date is selected.
-    // Let's force it or check if it's disabled.
-    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
-    expect(submitBtn).toBeDisabled();
+  it('shows an empty state when no future availability exists', async () => {
+    listMyAvailability.mockResolvedValue([]);
+    render(<EmployeeAvailabilityPage />);
+
+    expect(
+      await screen.findByText('עדיין לא הוזנה זמינות עתידית.')
+    ).toBeInTheDocument();
   });
 
-  it('submits form successfully and calls supabase insert', async () => {
-    await act(async () => {
-      render(<EmployeeAvailabilityPage />);
-    });
-    
-    const dateInput = screen.getByLabelText(/תאריך/i);
-    fireEvent.change(dateInput, { target: { value: '2023-11-01' } });
-    
-    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
-    expect(submitBtn).not.toBeDisabled();
-    
-    await act(async () => {
-      fireEvent.submit(submitBtn.closest('form'));
-    });
-    
-    expect(supabase.from).toHaveBeenCalledWith('availabilities');
-    expect(insertMock).toHaveBeenCalledWith({
-      user_id: 'user123',
-      available_date: '2023-11-01',
-      start_time: '08:00',
-      end_time: '16:00'
-    });
-    
-    expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('נשמרה בהצלחה'));
+  it('keeps the submit button disabled until a date is chosen', async () => {
+    render(<EmployeeAvailabilityPage />);
+    await screen.findByText('הזמינות שלי הקרובה');
+
+    expect(screen.getByRole('button', { name: /שמור זמינות/ })).toBeDisabled();
   });
 
-  it('shows error if not logged in', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    
-    await act(async () => {
-      render(<EmployeeAvailabilityPage />);
-    });
-    
-    const dateInput = screen.getByLabelText(/תאריך/i);
-    fireEvent.change(dateInput, { target: { value: '2023-11-01' } });
-    
-    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
-    
-    await act(async () => {
-      fireEvent.submit(submitBtn.closest('form'));
-    });
-    
-    expect(window.alert).toHaveBeenCalledWith("יש להתחבר כדי להזין זמינות");
-    expect(insertMock).not.toHaveBeenCalled();
+  it('rejects a window whose end is not after its start', async () => {
+    render(<EmployeeAvailabilityPage />);
+    await screen.findByText('הזמינות שלי הקרובה');
+
+    fireEvent.change(screen.getByLabelText(/תאריך/), { target: { value: '2099-02-01' } });
+    fireEvent.change(screen.getByLabelText(/משעה/), { target: { value: '16:00' } });
+    fireEvent.change(screen.getByLabelText(/עד שעה/), { target: { value: '16:00' } });
+    submitForm();
+
+    expect(
+      await screen.findByText('שעת הסיום חייבת להיות אחרי שעת ההתחלה.')
+    ).toBeInTheDocument();
+    expect(addAvailability).not.toHaveBeenCalled();
   });
-  
-  it('handles supabase insert error gracefully', async () => {
-    insertMock.mockResolvedValue({ error: new Error('DB Error') });
-    
-    await act(async () => {
-      render(<EmployeeAvailabilityPage />);
+
+  it('rejects a window that overlaps an existing entry on the same date', async () => {
+    render(<EmployeeAvailabilityPage />);
+    await screen.findByText('הזמינות שלי הקרובה');
+
+    // Existing entry is 2099-01-05 10:00-12:00; 08:00-16:00 overlaps it
+    fireEvent.change(screen.getByLabelText(/תאריך/), { target: { value: '2099-01-05' } });
+    fireEvent.change(screen.getByLabelText(/משעה/), { target: { value: '08:00' } });
+    fireEvent.change(screen.getByLabelText(/עד שעה/), { target: { value: '16:00' } });
+    submitForm();
+
+    expect(
+      await screen.findByText('כבר קיימת זמינות חופפת בתאריך זה.')
+    ).toBeInTheDocument();
+    expect(addAvailability).not.toHaveBeenCalled();
+  });
+
+  it('allows a non-overlapping window on the same date and saves it via the api', async () => {
+    addAvailability.mockResolvedValue({
+      id: 'a2',
+      user_id: 'user-1',
+      available_date: '2099-01-05',
+      start_time: '13:00:00',
+      end_time: '15:00:00',
     });
-    
-    const dateInput = screen.getByLabelText(/תאריך/i);
-    fireEvent.change(dateInput, { target: { value: '2023-11-01' } });
-    
-    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
-    
-    await act(async () => {
-      fireEvent.submit(submitBtn.closest('form'));
+    render(<EmployeeAvailabilityPage />);
+    await screen.findByText('הזמינות שלי הקרובה');
+
+    fireEvent.change(screen.getByLabelText(/תאריך/), { target: { value: '2099-01-05' } });
+    fireEvent.change(screen.getByLabelText(/משעה/), { target: { value: '13:00' } });
+    fireEvent.change(screen.getByLabelText(/עד שעה/), { target: { value: '15:00' } });
+    submitForm();
+
+    await waitFor(() => {
+      expect(addAvailability).toHaveBeenCalledWith({
+        userId: 'user-1',
+        date: '2099-01-05',
+        startTime: '13:00',
+        endTime: '15:00',
+      });
     });
-    
-    expect(window.alert).toHaveBeenCalledWith("שגיאה בשמירת הזמינות. יש לנסות שוב.");
+
+    expect(await screen.findByText(/זמינות נשמרה/)).toBeInTheDocument();
+    // The new entry is rendered in the list
+    expect(screen.getByText(/13:00-\s*15:00/)).toBeInTheDocument();
+  });
+
+  it('shows a friendly error when saving fails', async () => {
+    addAvailability.mockRejectedValue(new Error('db down'));
+    render(<EmployeeAvailabilityPage />);
+    await screen.findByText('הזמינות שלי הקרובה');
+
+    fireEvent.change(screen.getByLabelText(/תאריך/), { target: { value: '2099-02-01' } });
+    submitForm();
+
+    expect(
+      await screen.findByText('שגיאה בשמירת הזמינות. יש לנסות שוב.')
+    ).toBeInTheDocument();
+  });
+
+  it('deletes an entry via the api and removes it from the list', async () => {
+    deleteAvailability.mockResolvedValue([existingEntry]);
+    render(<EmployeeAvailabilityPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'מחיקת זמינות' }));
+
+    await waitFor(() => {
+      expect(deleteAvailability).toHaveBeenCalledWith('a1');
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/10:00-\s*12:00/)).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps the entry and shows an error when deletion fails', async () => {
+    deleteAvailability.mockRejectedValue(new Error('FK violation'));
+    render(<EmployeeAvailabilityPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'מחיקת זמינות' }));
+
+    expect(
+      await screen.findByText('שגיאה במחיקה. ייתכן שכבר שובצו לך טיפולים בחלון זה.')
+    ).toBeInTheDocument();
+    expect(screen.getByText(/10:00-\s*12:00/)).toBeInTheDocument();
   });
 });

@@ -1,35 +1,24 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, UserPlus, Menu, LogOut, LogIn, Users, Star } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
+import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, Menu, LogOut, LogIn, Users, Star, Briefcase } from 'lucide-react';
+import { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import './Navbar.css';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [session, setSession] = useState(null);
+  const { session, role, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await signOut();
     navigate('/login');
   };
 
   const isActive = (path) => location.pathname === path ? 'active' : '';
+  const closeMenu = () => setIsOpen(false);
+
+  const isStaff = role === 'Employee' || role === 'Admin';
 
   return (
     <nav className="navbar">
@@ -38,7 +27,7 @@ const Navbar = () => {
           <Scissors className="logo-icon" />
           <span>ShiftSync</span>
         </Link>
-        
+
         <div className="menu-icon" onClick={() => setIsOpen(!isOpen)}>
           <Menu />
         </div>
@@ -46,56 +35,66 @@ const Navbar = () => {
         <ul className={isOpen ? 'nav-menu active' : 'nav-menu'}>
           {/* Customer View */}
           <li className="nav-item">
-            <Link to="/book/1" className={`nav-links ${isActive('/book/1')}`} onClick={() => setIsOpen(false)}>
+            <Link to="/book" className={`nav-links ${isActive('/book')}`} onClick={closeMenu}>
               <Calendar size={18} />
               הזמנת תור
             </Link>
           </li>
-          
+
           {/* Admin View */}
-          {session?.user?.user_metadata?.role === 'Admin' && (
+          {role === 'Admin' && (
             <>
               <li className="nav-item">
-                <Link to="/admin/dashboard" className={`nav-links ${isActive('/admin/dashboard')}`} onClick={() => setIsOpen(false)}>
+                <Link to="/admin/dashboard" className={`nav-links ${isActive('/admin/dashboard')}`} onClick={closeMenu}>
                   <LayoutDashboard size={18} />
                   לוח בקרה
                 </Link>
               </li>
               <li className="nav-item">
-                <Link to="/admin/assign" className={`nav-links ${isActive('/admin/assign')}`} onClick={() => setIsOpen(false)}>
+                <Link to="/admin/assign" className={`nav-links ${isActive('/admin/assign')}`} onClick={closeMenu}>
                   <Users size={18} />
                   שיבוץ משמרות
                 </Link>
               </li>
               <li className="nav-item">
-                <Link to="/admin/services" className={`nav-links ${isActive('/admin/services')}`} onClick={() => setIsOpen(false)}>
+                <Link to="/admin/services" className={`nav-links ${isActive('/admin/services')}`} onClick={closeMenu}>
                   <Star size={18} />
                   ניהול שירותים
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/admin/team" className={`nav-links ${isActive('/admin/team')}`} onClick={closeMenu}>
+                  <Briefcase size={18} />
+                  ניהול צוות
                 </Link>
               </li>
             </>
           )}
 
-          {/* Employee View */}
-          <li className="nav-item">
-            <Link to="/employee/shifts" className={`nav-links ${isActive('/employee/shifts')}`} onClick={() => setIsOpen(false)}>
-              <Clock size={18} />
-              המשמרות שלי
-            </Link>
-          </li>
-          <li className="nav-item">
-            <Link to="/employee/availability" className={`nav-links ${isActive('/employee/availability')}`} onClick={() => setIsOpen(false)}>
-              <CheckCircle size={18} />
-              הזנת זמינות
-            </Link>
-          </li>
-          <li className="nav-item">
-            <Link to="/employee/recommendations" className={`nav-links ${isActive('/employee/recommendations')}`} onClick={() => setIsOpen(false)}>
-              <Star size={18} />
-              המלצות עבורי
-            </Link>
-          </li>
-          
+          {/* Employee View — staff only */}
+          {isStaff && (
+            <>
+              <li className="nav-item">
+                <Link to="/employee/shifts" className={`nav-links ${isActive('/employee/shifts')}`} onClick={closeMenu}>
+                  <Clock size={18} />
+                  המשמרות שלי
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/employee/availability" className={`nav-links ${isActive('/employee/availability')}`} onClick={closeMenu}>
+                  <CheckCircle size={18} />
+                  הזנת זמינות
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/employee/recommendations" className={`nav-links ${isActive('/employee/recommendations')}`} onClick={closeMenu}>
+                  <Star size={18} />
+                  משמרות פתוחות
+                </Link>
+              </li>
+            </>
+          )}
+
           {/* Auth Actions */}
           <li className="nav-item auth-item">
             {session ? (
@@ -104,9 +103,9 @@ const Navbar = () => {
                 התנתק
               </button>
             ) : (
-              <Link to="/login" className={`nav-links ${isActive('/login')}`} onClick={() => setIsOpen(false)}>
+              <Link to="/login" className={`nav-links ${isActive('/login')}`} onClick={closeMenu}>
                 <LogIn size={18} />
-                התחברות
+                כניסת צוות
               </Link>
             )}
           </li>

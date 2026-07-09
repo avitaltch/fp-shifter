@@ -9,7 +9,7 @@ const LandingPage = () => {
         <h1 className="hero-title">ניהול משמרות, עכשיו <span className="text-primary">ללא חיכוך</span></h1>
         <p className="hero-subtitle">פלטפורמה חכמה, קלה ונקייה לתכנון משמרות העובדים שלך.</p>
         <div className="hero-actions">
-          <Link to="/book/1" className="btn-primary">
+          <Link to="/book" className="btn-primary">
             הזמנת תור חדש
           </Link>
           <Link to="/about" className="btn-secondary">קרא עוד</Link>
@@ -29,8 +29,8 @@ const LandingPage = () => {
         </div>
         <div className="card feature-card">
           <Clock className="feature-icon" size={40} />
-          <h3>התראות זמן אמת</h3>
-          <p>קבלת התראות על חוסר בעובדים ושינויים שוטפים.</p>
+          <h3>זמינות חכמה</h3>
+          <p>לקוחות רואים רק שעות שבהן באמת יש עובד פנוי ומיומן.</p>
         </div>
       </section>
     </div>

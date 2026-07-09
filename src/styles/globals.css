@@ -89,3 +89,82 @@ button {
 .btn-secondary:hover {
   background-color: #bfdbfe;
 }
+
+/* Shared feedback + list styles used across pages */
+.error-text {
+  color: var(--danger, #dc2626);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-md, 8px);
+  padding: 0.6rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.success-text {
+  color: var(--success, #059669);
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius-md, 8px);
+  padding: 0.6rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.no-slots,
+.no-eligible {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin: 0.25rem 0;
+}
+
+.date-group {
+  margin-bottom: 1.25rem;
+}
+
+.date-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 1rem;
+  color: #1f2937;
+  margin: 1rem 0 0.5rem;
+}
+
+.availability-list {
+  margin-top: 2rem;
+}
+
+.availability-list h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.availability-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-md, 8px);
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.availability-entry .delete-btn {
+  color: var(--danger, #dc2626);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.25rem;
+  border-radius: 6px;
+}
+
+.availability-entry .delete-btn:hover {
+  background: #fef2f2;
+}
+
+.stat-card.alert-card {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+}

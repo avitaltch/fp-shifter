@@ -1,130 +1,93 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ProtectedRoute from './ProtectedRoute';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 
-vi.mock('../../lib/supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      })),
-    }
-  }
+vi.mock('../../context/AuthContext', () => ({
+  useAuth: vi.fn(),
 }));
 
-const TestComponent = () => <div>Protected Content</div>;
-const LoginComponent = () => <div>Login Page</div>;
-const HomeComponent = () => <div>Home Page</div>;
+const authState = ({ role = null, session = null, loading = false } = {}) => ({
+  session,
+  profile: role ? { first_name: 'דנה', last_name: 'לוי', role } : null,
+  role,
+  loading,
+  signOut: vi.fn(),
+});
 
-const renderWithRouter = (ui, initialRoute = '/') => {
-  window.history.pushState({}, 'Test page', initialRoute);
-  return render(
-    <BrowserRouter>
+const renderProtected = (allowedRoles) =>
+  render(
+    <MemoryRouter initialEntries={['/protected']}>
       <Routes>
-        <Route path="/login" element={<LoginComponent />} />
-        <Route path="/" element={<HomeComponent />} />
-        <Route path="/protected" element={ui} />
+        <Route path="/login" element={<div>Login Page</div>} />
+        <Route path="/" element={<div>Home Page</div>} />
+        <Route
+          path="/protected"
+          element={
+            <ProtectedRoute allowedRoles={allowedRoles}>
+              <div>Protected Content</div>
+            </ProtectedRoute>
+          }
+        />
       </Routes>
-    </BrowserRouter>
+    </MemoryRouter>
   );
-};
 
-describe('ProtectedRoute Component', () => {
+describe('ProtectedRoute', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders loading state initially', () => {
-    supabase.auth.getSession.mockResolvedValue(new Promise(() => {})); // Never resolves
-    
-    renderWithRouter(
-      <ProtectedRoute>
-        <TestComponent />
-      </ProtectedRoute>,
-      '/protected'
-    );
-    
+  it('shows a loading indicator while auth is resolving', () => {
+    useAuth.mockReturnValue(authState({ loading: true }));
+    renderProtected(['Admin']);
+
     expect(screen.getByText('טוען...')).toBeInTheDocument();
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
 
-  it('redirects to login if not authenticated', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    
-    renderWithRouter(
-      <ProtectedRoute>
-        <TestComponent />
-      </ProtectedRoute>,
-      '/protected'
-    );
-    
-    await waitFor(() => {
-      expect(screen.getByText('Login Page')).toBeInTheDocument();
-    });
+  it('redirects to /login when there is no session', () => {
+    useAuth.mockReturnValue(authState());
+    renderProtected(['Admin']);
+
+    expect(screen.getByText('Login Page')).toBeInTheDocument();
   });
 
-  it('renders children if authenticated and no roles required', async () => {
-    supabase.auth.getSession.mockResolvedValue({ 
-      data: { 
-        session: { 
-          user: { user_metadata: { role: 'Employee' } } 
-        } 
-      } 
-    });
-    
-    renderWithRouter(
-      <ProtectedRoute>
-        <TestComponent />
-      </ProtectedRoute>,
-      '/protected'
+  it('redirects home when the role from the users table is not allowed', () => {
+    useAuth.mockReturnValue(
+      authState({ session: { user: { id: 'user-1' } }, role: 'Employee' })
     );
-    
-    await waitFor(() => {
-      expect(screen.getByText('Protected Content')).toBeInTheDocument();
-    });
+    renderProtected(['Admin']);
+
+    expect(screen.getByText('Home Page')).toBeInTheDocument();
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
 
-  it('redirects to home if authenticated but wrong role', async () => {
-    supabase.auth.getSession.mockResolvedValue({ 
-      data: { 
-        session: { 
-          user: { user_metadata: { role: 'Employee' } } 
-        } 
-      } 
-    });
-    
-    renderWithRouter(
-      <ProtectedRoute allowedRoles={['Manager']}>
-        <TestComponent />
-      </ProtectedRoute>,
-      '/protected'
+  it('renders the children when the role is allowed', () => {
+    useAuth.mockReturnValue(
+      authState({ session: { user: { id: 'user-1' } }, role: 'Admin' })
     );
-    
-    await waitFor(() => {
-      expect(screen.getByText('Home Page')).toBeInTheDocument();
-    });
+    renderProtected(['Admin']);
+
+    expect(screen.getByText('Protected Content')).toBeInTheDocument();
   });
 
-  it('renders children if authenticated and correct role', async () => {
-    supabase.auth.getSession.mockResolvedValue({ 
-      data: { 
-        session: { 
-          user: { user_metadata: { role: 'Manager' } } 
-        } 
-      } 
-    });
-    
-    renderWithRouter(
-      <ProtectedRoute allowedRoles={['Manager']}>
-        <TestComponent />
-      </ProtectedRoute>,
-      '/protected'
+  it('accepts any of the allowed roles', () => {
+    useAuth.mockReturnValue(
+      authState({ session: { user: { id: 'user-1' } }, role: 'Employee' })
     );
-    
-    await waitFor(() => {
-      expect(screen.getByText('Protected Content')).toBeInTheDocument();
-    });
+    renderProtected(['Employee', 'Admin']);
+
+    expect(screen.getByText('Protected Content')).toBeInTheDocument();
+  });
+
+  it('renders the children for any authenticated user when no roles are required', () => {
+    useAuth.mockReturnValue(
+      authState({ session: { user: { id: 'user-1' } }, role: 'Employee' })
+    );
+    renderProtected(undefined);
+
+    expect(screen.getByText('Protected Content')).toBeInTheDocument();
   });
 });
