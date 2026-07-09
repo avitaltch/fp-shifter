@@ -144,4 +144,16 @@ describe('MyShiftsPage', () => {
 
     expect(await screen.findByText('שגיאה בטעינת משמרות. יש לרענן.')).toBeInTheDocument();
   });
+
+  it('falls back to "לקוח לא ידוע" when the customer join is missing', async () => {
+    listMyShifts.mockResolvedValue([
+      {
+        ...mockShifts[0],
+        appointments: { visit_date: '2026-07-20', customers: null },
+      },
+    ]);
+    render(<MyShiftsPage />);
+
+    expect(await screen.findByText(/לקוח לא ידוע/)).toBeInTheDocument();
+  });
 });

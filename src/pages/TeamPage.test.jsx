@@ -149,6 +149,20 @@ describe('TeamPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows a friendly error and keeps the chip inactive when adding a skill fails', async () => {
+    addSkill.mockRejectedValue(new Error('network'));
+    render(<TeamPage />);
+    await screen.findByRole('heading', { name: 'יוסי כהן' });
+    const card = employeeCard('יוסי כהן');
+
+    fireEvent.click(within(card).getByRole('button', { name: 'צבע' }));
+
+    expect(
+      await screen.findByText('שגיאה בעדכון המיומנות.')
+    ).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'צבע' })).not.toHaveClass('active');
+  });
+
   it('shows an empty state when there is no staff', async () => {
     listStaffWithSkills.mockResolvedValue({ staff: [], skills: [] });
     render(<TeamPage />);

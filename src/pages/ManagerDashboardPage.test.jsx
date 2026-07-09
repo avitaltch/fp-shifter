@@ -171,5 +171,21 @@ describe('ManagerDashboardPage', () => {
         expect(getDashboardData).toHaveBeenCalledTimes(1);
       });
     });
+
+    it('cancels a future appointment from the upcoming-days section', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      cancelAppointment.mockResolvedValue(null);
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/יעל כהן/);
+
+      fireEvent.click(screen.getByRole('button', { name: 'ביטול התור של יעל' }));
+
+      await waitFor(() => {
+        expect(cancelAppointment).toHaveBeenCalledWith('apt-2');
+      });
+      expect(await screen.findByText('התור בוטל והשעות שוחררו.')).toBeInTheDocument();
+      expect(screen.queryByText(/יעל כהן/)).not.toBeInTheDocument();
+    });
   });
 });

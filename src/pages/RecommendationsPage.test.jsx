@@ -82,6 +82,19 @@ describe('RecommendationsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it.each([
+    ['NOT_AVAILABLE', 'מחוץ לחלונות הזמינות שלך'],
+    ['SHIFT_CONFLICT', 'חופף לשיבוץ קיים שלך'],
+  ])('explains ineligibility for reason %s', async (reason, hint) => {
+    getClaimableShifts.mockResolvedValue([
+      { ...mockOpenShifts[0], eligible: false, reason },
+    ]);
+    render(<RecommendationsPage />);
+
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /אני פנוי\/ה/ })).not.toBeInTheDocument();
+  });
+
   it('claims a shift via the RPC and removes it from the list', async () => {
     claimShift.mockResolvedValue({ item_id: 'r1', user_id: 'user-1' });
     render(<RecommendationsPage />);

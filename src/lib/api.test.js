@@ -518,6 +518,18 @@ describe('getDashboardData', () => {
 
     await expect(getDashboardData('2026-07-20', '2026-07-26')).rejects.toThrow('boom');
   });
+
+  it('coalesces a null staff count to 0', async () => {
+    fromByTable({
+      appointments: createQuery({ data: [], error: null }),
+      users: createQuery({ count: null, error: null }),
+    });
+
+    await expect(getDashboardData('2026-07-20', '2026-07-26')).resolves.toEqual({
+      appointments: [],
+      staffCount: 0,
+    });
+  });
 });
 
 describe('team api', () => {

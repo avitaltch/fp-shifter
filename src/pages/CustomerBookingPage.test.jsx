@@ -212,4 +212,41 @@ describe('CustomerBookingPage', () => {
     });
     expect(mockNavigate).not.toHaveBeenCalled();
   });
+
+  it('shows a friendly error when loading slots fails', async () => {
+    getAvailableSlots.mockRejectedValue(new Error('network'));
+
+    renderPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+
+    expect(
+      await screen.findByText('שגיאה בטעינת השעות הפנויות.')
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the SLOT_TAKEN message and clears chips when the post-race refetch also fails', async () => {
+    bookAppointment.mockRejectedValue(new Error('SLOT_TAKEN'));
+
+    renderPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    await completeForm();
+
+    // After the lost race, the refresh of free slots also fails
+    getAvailableSlots.mockRejectedValue(new Error('network'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'אישור הזמנה' }));
+
+    expect(
+      await screen.findByText('השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.')
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
 });
