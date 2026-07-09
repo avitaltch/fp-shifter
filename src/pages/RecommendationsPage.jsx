@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getClaimableShifts, claimShift } from '../lib/api';
-import { friendlyError } from '../lib/errors';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
+import PageHeader from '../components/PageHeader/PageHeader';
+import Alert from '../components/Alert/Alert';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import { Star, Clock, Calendar as CalendarIcon, UserPlus, Ban } from 'lucide-react';
@@ -20,47 +23,23 @@ const INELIGIBLE_HINTS = {
 const RecommendationsPage = () => {
   const { session } = useAuth();
   const userId = session?.user?.id;
-  const [openShifts, setOpenShifts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
-  const [claimingId, setClaimingId] = useState(null);
 
-  const fetchOpenShifts = useCallback(async () => {
-    if (!userId) return;
-    try {
-      setLoading(true);
-      setError(null);
-      setOpenShifts(await getClaimableShifts(userId, todayString()));
-    } catch (err) {
-      console.error(err);
-      setError('שגיאה בטעינת המשמרות הפתוחות.');
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
+  const fetchShifts = useCallback(() => getClaimableShifts(userId, todayString()), [userId]);
+  const { data, setData, loading, error, refetch } = useAsyncData(fetchShifts, {
+    enabled: Boolean(userId),
+    errorMessage: 'שגיאה בטעינת המשמרות הפתוחות.',
+  });
+  // A failed claim usually means the list is stale — refetch on error.
+  const { busyKey: claimingId, message, run } = useAction({ onError: refetch });
 
-  useEffect(() => {
-    fetchOpenShifts();
-  }, [fetchOpenShifts]);
+  const openShifts = data ?? [];
 
   const handleVolunteer = async (taskId) => {
-    if (!session) return;
-    setMessage(null);
-    setClaimingId(taskId);
-    try {
-      // The claim_shift RPC re-checks skills/availability/conflicts and
-      // throws SHIFT_TAKEN on a lost race — never a silent false success.
-      await claimShift(taskId);
-      setOpenShifts((prev) => prev.filter((r) => r.id !== taskId));
-      setMessage({ type: 'success', text: 'מעולה! המשמרת שובצה אליך בהצלחה.' });
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: friendlyError(err, 'שגיאה בשיבוץ למשמרת.') });
-      fetchOpenShifts();
-    } finally {
-      setClaimingId(null);
-    }
+    const { ok } = await run(taskId, () => claimShift(taskId), {
+      success: 'מעולה! המשמרת שובצה אליך בהצלחה.',
+      errorFallback: 'שגיאה בשיבוץ למשמרת.',
+    });
+    if (ok) setData((prev) => prev.filter((r) => r.id !== taskId));
   };
 
   const claimable = openShifts.filter((s) => s.eligible);
@@ -111,17 +90,15 @@ const RecommendationsPage = () => {
 
   return (
     <PageContainer size="md" className="recommendations-page">
-      <header className="page-header">
-        <Star size={32} className="header-icon" />
-        <h1>משמרות פתוחות</h1>
-        <p>משמרות שממתינות לשיבוץ. קח/י יוזמה ושבצ/י את עצמך!</p>
-      </header>
+      <PageHeader
+        icon={Star}
+        title="משמרות פתוחות"
+        subtitle="משמרות שממתינות לשיבוץ. קח/י יוזמה ושבצ/י את עצמך!"
+      />
 
       {loading && <LoadingSpinner text="טוען משמרות..." />}
-      {error && <p className="error-text">{error}</p>}
-      {message && (
-        <p className={message.type === 'error' ? 'error-text' : 'success-text'}>{message.text}</p>
-      )}
+      <Alert type="error">{error}</Alert>
+      <Alert type={message?.type}>{message?.text}</Alert>
 
       {!loading && !error && openShifts.length === 0 && (
         <EmptyState icon={Star} text="אין משמרות פתוחות כרגע. הכל מתוקתק!" />

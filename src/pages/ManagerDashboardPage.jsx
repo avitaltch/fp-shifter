@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Users, Calendar, Clock, ArrowLeft, XCircle } from 'lucide-react';
 import { getDashboardData, cancelAppointment } from '../lib/api';
-import { friendlyError } from '../lib/errors';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import { todayString, addDaysString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
+import Alert from '../components/Alert/Alert';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import EmptyState from '../components/EmptyState/EmptyState';
 import './ManagerDashboardPage.css';
@@ -15,29 +17,18 @@ const STATUS_LABELS = {
 };
 
 const ManagerDashboardPage = () => {
-  const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
-  const [cancellingId, setCancellingId] = useState(null);
+  // Cancelled appointments are filtered out in the query
+  const fetchDashboard = useCallback(
+    async () => (await getDashboardData(todayString(), addDaysString(6))).appointments || [],
+    []
+  );
+  const { data, setData, loading, error, refetch } = useAsyncData(fetchDashboard, {
+    errorMessage: 'שגיאה בטעינת נתוני הדאשבורד.',
+  });
+  // A failed cancel usually means the list is stale — refetch on error.
+  const { busyKey: cancellingId, message, run } = useAction({ onError: refetch });
 
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      // Cancelled appointments are filtered out in the query
-      const { appointments: data } = await getDashboardData(todayString(), addDaysString(6));
-      setAppointments(data || []);
-    } catch (err) {
-      console.error(err);
-      setError('שגיאה בטעינת נתוני הדאשבורד.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+  const appointments = data ?? [];
 
   const handleCancel = async (apt) => {
     const customerName = `${apt.customers?.first_name || ''} ${apt.customers?.last_name || ''}`.trim();
@@ -46,21 +37,13 @@ const ManagerDashboardPage = () => {
     );
     if (!confirmed) return;
 
-    setMessage(null);
-    setCancellingId(apt.id);
-    try {
-      // cancel_appointment RPC: status + item soft-delete in one transaction,
-      // so the booked span is actually freed for new bookings.
-      await cancelAppointment(apt.id);
-      setAppointments((prev) => prev.filter((a) => a.id !== apt.id));
-      setMessage({ type: 'success', text: 'התור בוטל והשעות שוחררו.' });
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: friendlyError(err, 'שגיאה בביטול התור.') });
-      fetchDashboardData();
-    } finally {
-      setCancellingId(null);
-    }
+    // cancel_appointment RPC: status + item soft-delete in one transaction,
+    // so the booked span is actually freed for new bookings.
+    const { ok } = await run(apt.id, () => cancelAppointment(apt.id), {
+      success: 'התור בוטל והשעות שוחררו.',
+      errorFallback: 'שגיאה בביטול התור.',
+    });
+    if (ok) setData((prev) => prev.filter((a) => a.id !== apt.id));
   };
 
   if (loading) return (
@@ -95,9 +78,7 @@ const ManagerDashboardPage = () => {
         <p className="date-display">{formatHebrewDate(todayStr)}</p>
       </header>
 
-      {message && (
-        <p className={message.type === 'error' ? 'error-text' : 'success-text'}>{message.text}</p>
-      )}
+      <Alert type={message?.type}>{message?.text}</Alert>
 
       <div className="stats-grid">
         <div className="stat-card">

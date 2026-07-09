@@ -8,6 +8,23 @@ import {
   updateService,
   cancelAppointment,
   eligibleEmployeesFor,
+  listServices,
+  createService,
+  deleteService,
+  getAvailableSlots,
+  bookAppointment,
+  listMyAvailability,
+  addAvailability,
+  deleteAvailability,
+  listMyShifts,
+  listOpenShifts,
+  getClaimableShifts,
+  getAssignmentData,
+  getDashboardData,
+  listStaffWithSkills,
+  addSkill,
+  removeSkill,
+  setUserRole,
 } from './api';
 
 vi.mock('./supabase', () => ({
@@ -30,6 +47,15 @@ function createQuery(result) {
   }
   query.then = (resolve, reject) => Promise.resolve(result).then(resolve, reject);
   return query;
+}
+
+// Route supabase.from(table) to per-table queries. An array value acts as a
+// queue for tables queried more than once in a single call.
+function fromByTable(map) {
+  supabase.from.mockImplementation((table) => {
+    const entry = map[table];
+    return Array.isArray(entry) ? entry.shift() : entry;
+  });
 }
 
 describe('claimShift', () => {
@@ -214,6 +240,334 @@ describe('updateShiftStatus', () => {
     expect(query.eq).toHaveBeenCalledWith('id', 'item-1');
     // Ownership guard: another user's shift must match 0 rows
     expect(query.eq).toHaveBeenCalledWith('user_id', 'user-1');
+  });
+});
+
+describe('services api', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('listServices filters soft-deleted rows and orders by name', async () => {
+    const rows = [{ id: 'svc-1', name: 'תספורת' }];
+    const query = createQuery({ data: rows, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(listServices()).resolves.toEqual(rows);
+    expect(supabase.from).toHaveBeenCalledWith('service_types');
+    expect(query.is).toHaveBeenCalledWith('deleted_at', null);
+    expect(query.order).toHaveBeenCalledWith('name');
+  });
+
+  it('createService inserts the row and returns it', async () => {
+    const row = { id: 'svc-1', name: 'צבע' };
+    const query = createQuery({ data: row, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(
+      createService({ name: 'צבע', description: '', base_price: 200, default_duration: 60 })
+    ).resolves.toEqual(row);
+    expect(query.insert).toHaveBeenCalledWith([
+      { name: 'צבע', description: '', base_price: 200, default_duration: 60 },
+    ]);
+  });
+
+  it('deleteService soft-deletes by setting deleted_at', async () => {
+    const query = createQuery({ data: [{ id: 'svc-1' }], error: null });
+    supabase.from.mockReturnValue(query);
+
+    await deleteService('svc-1');
+    const [payload] = query.update.mock.calls[0];
+    expect(payload.deleted_at).toEqual(expect.any(String));
+    expect(query.eq).toHaveBeenCalledWith('id', 'svc-1');
+  });
+});
+
+describe('booking api', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('getAvailableSlots calls the RPC with date + services', async () => {
+    supabase.rpc.mockResolvedValue({ data: ['10:00:00'], error: null });
+
+    await expect(getAvailableSlots('2026-07-20', ['svc-1'])).resolves.toEqual(['10:00:00']);
+    expect(supabase.rpc).toHaveBeenCalledWith('get_available_slots', {
+      p_date: '2026-07-20',
+      p_service_ids: ['svc-1'],
+    });
+  });
+
+  it('bookAppointment maps camelCase fields to RPC params (empty email/notes -> null)', async () => {
+    supabase.rpc.mockResolvedValue({ data: { appointment_id: 'apt-1' }, error: null });
+
+    await bookAppointment({
+      firstName: 'דנה',
+      lastName: 'לוי',
+      phone: '050-1234567',
+      email: '',
+      visitDate: '2026-07-20',
+      startTime: '10:00:00',
+      serviceIds: ['svc-1'],
+      notes: '',
+    });
+
+    expect(supabase.rpc).toHaveBeenCalledWith('book_appointment', {
+      p_first_name: 'דנה',
+      p_last_name: 'לוי',
+      p_phone: '050-1234567',
+      p_email: null,
+      p_visit_date: '2026-07-20',
+      p_start_time: '10:00:00',
+      p_service_ids: ['svc-1'],
+      p_notes: null,
+    });
+  });
+
+  it('bookAppointment propagates RPC errors (e.g. SLOT_TAKEN)', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('SLOT_TAKEN') });
+
+    await expect(
+      bookAppointment({
+        firstName: 'א',
+        lastName: 'ב',
+        phone: '050',
+        visitDate: '2026-07-20',
+        startTime: '10:00:00',
+        serviceIds: ['svc-1'],
+      })
+    ).rejects.toThrow('SLOT_TAKEN');
+  });
+});
+
+describe('availability api', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('listMyAvailability scopes to the user from a date onwards', async () => {
+    const rows = [{ id: 'a1' }];
+    const query = createQuery({ data: rows, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(listMyAvailability('user-1', '2026-07-20')).resolves.toEqual(rows);
+    expect(query.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(query.gte).toHaveBeenCalledWith('available_date', '2026-07-20');
+  });
+
+  it('addAvailability inserts the mapped row', async () => {
+    const row = { id: 'a2' };
+    const query = createQuery({ data: row, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(
+      addAvailability({ userId: 'user-1', date: '2026-07-20', startTime: '08:00', endTime: '16:00' })
+    ).resolves.toEqual(row);
+    expect(query.insert).toHaveBeenCalledWith([
+      {
+        user_id: 'user-1',
+        available_date: '2026-07-20',
+        start_time: '08:00',
+        end_time: '16:00',
+        notes: null,
+      },
+    ]);
+  });
+
+  it('deleteAvailability deletes by id', async () => {
+    const query = createQuery({ data: [], error: null });
+    supabase.from.mockReturnValue(query);
+
+    await deleteAvailability('a1');
+    expect(query.delete).toHaveBeenCalled();
+    expect(query.eq).toHaveBeenCalledWith('id', 'a1');
+  });
+});
+
+describe('shift list api', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('listMyShifts scopes to the user, live rows, from a date onwards', async () => {
+    const rows = [{ id: 'item-1' }];
+    const query = createQuery({ data: rows, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(listMyShifts('user-1', '2026-07-20')).resolves.toEqual(rows);
+    expect(query.eq).toHaveBeenCalledWith('user_id', 'user-1');
+    expect(query.is).toHaveBeenCalledWith('deleted_at', null);
+    expect(query.gte).toHaveBeenCalledWith('work_date', '2026-07-20');
+  });
+
+  it('listOpenShifts returns only unassigned live rows', async () => {
+    const rows = [{ id: 'item-2' }];
+    const query = createQuery({ data: rows, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(listOpenShifts('2026-07-20')).resolves.toEqual(rows);
+    expect(query.is).toHaveBeenCalledWith('user_id', null);
+    expect(query.is).toHaveBeenCalledWith('deleted_at', null);
+  });
+
+  it('getClaimableShifts annotates open shifts with eligibility for the user', async () => {
+    const openItem = {
+      id: 'item-1',
+      service_type_id: 'svc-1',
+      work_date: '2026-07-20',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+    };
+    fromByTable({
+      appointment_items: [
+        createQuery({ data: [openItem], error: null }), // open shifts
+        createQuery({ data: [], error: null }), // my assignments
+      ],
+      employee_skills: createQuery({
+        data: [{ user_id: 'me', service_type_id: 'svc-1' }],
+        error: null,
+      }),
+      availabilities: createQuery({
+        data: [
+          { user_id: 'me', available_date: '2026-07-20', start_time: '08:00:00', end_time: '16:00:00' },
+        ],
+        error: null,
+      }),
+    });
+
+    const result = await getClaimableShifts('me', '2026-07-20');
+    expect(result).toEqual([{ ...openItem, eligible: true, reason: null }]);
+  });
+
+  it('getClaimableShifts marks unqualified shifts with a reason', async () => {
+    const openItem = {
+      id: 'item-1',
+      service_type_id: 'svc-1',
+      work_date: '2026-07-20',
+      start_time: '10:00:00',
+      end_time: '11:00:00',
+    };
+    fromByTable({
+      appointment_items: [
+        createQuery({ data: [openItem], error: null }),
+        createQuery({ data: [], error: null }),
+      ],
+      employee_skills: createQuery({ data: [], error: null }),
+      availabilities: createQuery({ data: [], error: null }),
+    });
+
+    const result = await getClaimableShifts('me', '2026-07-20');
+    expect(result[0]).toMatchObject({ eligible: false, reason: 'NOT_QUALIFIED' });
+  });
+});
+
+describe('getAssignmentData', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetches all datasets in parallel and returns them keyed', async () => {
+    const unassigned = [{ id: 'item-1' }];
+    const staff = [{ id: 'emp-1' }];
+    const skills = [{ user_id: 'emp-1', service_type_id: 'svc-1' }];
+    const availabilities = [{ id: 'a1' }];
+    const assignments = [{ id: 'item-2', user_id: 'emp-1' }];
+    fromByTable({
+      appointment_items: [
+        createQuery({ data: unassigned, error: null }),
+        createQuery({ data: assignments, error: null }),
+      ],
+      users: createQuery({ data: staff, error: null }),
+      employee_skills: createQuery({ data: skills, error: null }),
+      availabilities: createQuery({ data: availabilities, error: null }),
+    });
+
+    await expect(getAssignmentData('2026-07-20')).resolves.toEqual({
+      unassigned,
+      staff,
+      skills,
+      availabilities,
+      assignments,
+    });
+  });
+});
+
+describe('getDashboardData', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns appointments and the staff count', async () => {
+    const appointments = [{ id: 'apt-1' }];
+    const aptQuery = createQuery({ data: appointments, error: null });
+    const countQuery = createQuery({ count: 4, error: null });
+    fromByTable({ appointments: aptQuery, users: countQuery });
+
+    await expect(getDashboardData('2026-07-20', '2026-07-26')).resolves.toEqual({
+      appointments,
+      staffCount: 4,
+    });
+    expect(aptQuery.neq).toHaveBeenCalledWith('status', 'Cancelled');
+  });
+
+  it('throws when the count query fails', async () => {
+    fromByTable({
+      appointments: createQuery({ data: [], error: null }),
+      users: createQuery({ count: null, error: new Error('boom') }),
+    });
+
+    await expect(getDashboardData('2026-07-20', '2026-07-26')).rejects.toThrow('boom');
+  });
+});
+
+describe('team api', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('listStaffWithSkills returns staff and skills together', async () => {
+    const staff = [{ id: 'emp-1' }];
+    const skills = [{ id: 's1', user_id: 'emp-1' }];
+    fromByTable({
+      users: createQuery({ data: staff, error: null }),
+      employee_skills: createQuery({ data: skills, error: null }),
+    });
+
+    await expect(listStaffWithSkills()).resolves.toEqual({ staff, skills });
+  });
+
+  it('addSkill inserts the pair and returns the created row', async () => {
+    const row = { id: 's1', user_id: 'emp-1', service_type_id: 'svc-1' };
+    const query = createQuery({ data: row, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(addSkill('emp-1', 'svc-1')).resolves.toEqual(row);
+    expect(query.insert).toHaveBeenCalledWith([{ user_id: 'emp-1', service_type_id: 'svc-1' }]);
+  });
+
+  it('removeSkill deletes by skill id', async () => {
+    const query = createQuery({ data: [], error: null });
+    supabase.from.mockReturnValue(query);
+
+    await removeSkill('s1');
+    expect(query.delete).toHaveBeenCalled();
+    expect(query.eq).toHaveBeenCalledWith('id', 's1');
+  });
+
+  it('setUserRole goes through the hardened admin RPC', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: null });
+
+    await setUserRole('emp-1', 'Admin');
+    expect(supabase.rpc).toHaveBeenCalledWith('admin_set_user_role', {
+      p_user_id: 'emp-1',
+      p_role: 'Admin',
+    });
+  });
+
+  it('setUserRole propagates CANNOT_CHANGE_OWN_ROLE', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('CANNOT_CHANGE_OWN_ROLE') });
+
+    await expect(setUserRole('me', 'Employee')).rejects.toThrow('CANNOT_CHANGE_OWN_ROLE');
   });
 });
 

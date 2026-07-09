@@ -1,0 +1,9 @@
+.page-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.header-icon {
+  color: var(--primary);
+  margin-bottom: 1rem;
+}

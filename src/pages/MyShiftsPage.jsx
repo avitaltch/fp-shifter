@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Clock, User, CheckCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { listMyShifts, updateShiftStatus } from '../lib/api';
-import { friendlyError } from '../lib/errors';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
+import PageHeader from '../components/PageHeader/PageHeader';
+import Alert from '../components/Alert/Alert';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './MyShiftsPage.css';
@@ -12,41 +15,34 @@ import './MyShiftsPage.css';
 // Scheduled -> In_Progress -> Done. Done is terminal (no accidental reset).
 const NEXT_STATUS = { Scheduled: 'In_Progress', In_Progress: 'Done' };
 
+const STATUS_LABELS = {
+  Scheduled: 'מתוכנן - לחץ להתחלה',
+  In_Progress: 'בביצוע - לחץ לסיום',
+};
+
 const MyShiftsPage = () => {
   const { session, profile } = useAuth();
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [actionError, setActionError] = useState(null);
+  const userId = session?.user?.id;
 
-  const fetchTasks = useCallback(async () => {
-    if (!session) return;
-    try {
-      setLoading(true);
-      setError(null);
-      setTasks(await listMyShifts(session.user.id, todayString()));
-    } catch (err) {
-      console.error(err);
-      setError('שגיאה בטעינת משמרות. יש לרענן.');
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
+  const fetchShifts = useCallback(() => listMyShifts(userId, todayString()), [userId]);
+  const { data, setData, loading, error } = useAsyncData(fetchShifts, {
+    enabled: Boolean(userId),
+    errorMessage: 'שגיאה בטעינת משמרות. יש לרענן.',
+  });
+  const { message: actionMessage, run } = useAction();
 
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+  const tasks = data ?? [];
 
   const advanceStatus = async (task) => {
     const nextStatus = NEXT_STATUS[task.status];
     if (!nextStatus) return;
-    setActionError(null);
-    try {
-      await updateShiftStatus(task.id, session.user.id, nextStatus);
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
-    } catch (err) {
-      console.error(err);
-      setActionError(friendlyError(err, 'שגיאה בעדכון הסטטוס.'));
+    const { ok } = await run(
+      task.id,
+      () => updateShiftStatus(task.id, userId, nextStatus),
+      { errorFallback: 'שגיאה בעדכון הסטטוס.' }
+    );
+    if (ok) {
+      setData((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
     }
   };
 
@@ -60,16 +56,16 @@ const MyShiftsPage = () => {
 
   return (
     <PageContainer size="md" className="my-shifts-page">
-      <header className="page-header">
-        <User size={32} className="header-icon" />
-        <h1>המשמרות שלי{displayName ? ` - ${displayName}` : ''}</h1>
-        <p>הטיפולים ששובצת אליהם מהיום והלאה</p>
-      </header>
+      <PageHeader
+        icon={User}
+        title={`המשמרות שלי${displayName ? ` - ${displayName}` : ''}`}
+        subtitle="הטיפולים ששובצת אליהם מהיום והלאה"
+      />
 
       <div className="tasks-list">
         {loading && <LoadingSpinner text="טוען משמרות..." />}
-        {error && <p className="error-text">{error}</p>}
-        {actionError && <p className="error-text">{actionError}</p>}
+        <Alert type="error">{error}</Alert>
+        <Alert type={actionMessage?.type}>{actionMessage?.text}</Alert>
         {!loading && !error && tasks.length === 0 ? (
           <EmptyState text="אין טיפולים מתוכננים. איזה כיף!" />
         ) : (
@@ -98,8 +94,7 @@ const MyShiftsPage = () => {
                         onClick={() => advanceStatus(task)}
                         disabled={task.status === 'Done'}
                       >
-                        {task.status === 'Scheduled' && 'מתוכנן - לחץ להתחלה'}
-                        {task.status === 'In_Progress' && 'בביצוע - לחץ לסיום'}
+                        {STATUS_LABELS[task.status]}
                         {task.status === 'Done' && (
                           <><CheckCircle size={14} style={{ marginLeft: '4px' }} /> הסתיים</>
                         )}

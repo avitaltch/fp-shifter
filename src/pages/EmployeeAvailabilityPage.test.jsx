@@ -124,8 +124,11 @@ describe('EmployeeAvailabilityPage', () => {
     });
 
     expect(await screen.findByText(/זמינות נשמרה/)).toBeInTheDocument();
-    // The new entry is rendered in the list
-    expect(screen.getByText(/13:00-\s*15:00/)).toBeInTheDocument();
+    // The new entry is rendered in the list (scoped — the success message
+    // repeats the same times)
+    const entries = document.querySelectorAll('.availability-entry');
+    const texts = [...entries].map((e) => e.textContent);
+    expect(texts.some((t) => /13:00-\s*15:00/.test(t))).toBe(true);
   });
 
   it('shows a friendly error when saving fails', async () => {

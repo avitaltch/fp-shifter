@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Calendar, Clock, CheckCircle, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { listMyAvailability, addAvailability, deleteAvailability } from '../lib/api';
-import { friendlyError } from '../lib/errors';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
+import PageHeader from '../components/PageHeader/PageHeader';
+import Alert from '../components/Alert/Alert';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import EmptyState from '../components/EmptyState/EmptyState';
 import './EmployeeAvailabilityPage.css';
@@ -18,30 +21,20 @@ const TIME_OPTIONS = Array.from({ length: 31 }, (_, i) => {
 
 const EmployeeAvailabilityPage = () => {
   const { session } = useAuth();
+  const userId = session?.user?.id;
   const [selectedDate, setSelectedDate] = useState('');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('16:00');
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState(null);
 
-  const fetchEntries = useCallback(async () => {
-    if (!session) return;
-    try {
-      setLoading(true);
-      setEntries(await listMyAvailability(session.user.id, todayString()));
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: 'שגיאה בטעינת הזמינות הקיימת.' });
-    } finally {
-      setLoading(false);
-    }
-  }, [session]);
+  const fetchEntries = useCallback(() => listMyAvailability(userId, todayString()), [userId]);
+  const { data, setData, loading, error } = useAsyncData(fetchEntries, {
+    enabled: Boolean(userId),
+    errorMessage: 'שגיאה בטעינת הזמינות הקיימת.',
+  });
+  const { busyKey, message, setMessage, run } = useAction();
 
-  useEffect(() => {
-    fetchEntries();
-  }, [fetchEntries]);
+  const entries = data ?? [];
+  const isSubmitting = busyKey === 'add';
 
   const overlapsExisting = (date, start, end) =>
     entries.some(
@@ -68,55 +61,40 @@ const EmployeeAvailabilityPage = () => {
       return;
     }
 
-    setIsSubmitting(true);
-    try {
-      const entry = await addAvailability({
-        userId: session.user.id,
-        date: selectedDate,
-        startTime,
-        endTime,
-      });
-      setEntries((prev) =>
+    const { ok, result: entry } = await run(
+      'add',
+      () => addAvailability({ userId, date: selectedDate, startTime, endTime }),
+      {
+        success: `זמינות נשמרה: ${formatHebrewDate(selectedDate)}, ${startTime}-${endTime}`,
+        errorFallback: 'שגיאה בשמירת הזמינות. יש לנסות שוב.',
+      }
+    );
+    if (ok) {
+      setData((prev) =>
         [...prev, entry].sort(
           (a, b) =>
             a.available_date.localeCompare(b.available_date) ||
             a.start_time.localeCompare(b.start_time)
         )
       );
-      setMessage({
-        type: 'success',
-        text: `זמינות נשמרה: ${formatHebrewDate(selectedDate)}, ${startTime}-${endTime}`,
-      });
       setSelectedDate('');
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: friendlyError(err, 'שגיאה בשמירת הזמינות. יש לנסות שוב.') });
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   const handleDelete = async (id) => {
-    setMessage(null);
-    try {
-      await deleteAvailability(id);
-      setEntries((prev) => prev.filter((a) => a.id !== id));
-    } catch (err) {
-      console.error(err);
-      setMessage({
-        type: 'error',
-        text: friendlyError(err, 'שגיאה במחיקה. ייתכן שכבר שובצו לך טיפולים בחלון זה.'),
-      });
-    }
+    const { ok } = await run(id, () => deleteAvailability(id), {
+      errorFallback: 'שגיאה במחיקה. ייתכן שכבר שובצו לך טיפולים בחלון זה.',
+    });
+    if (ok) setData((prev) => prev.filter((a) => a.id !== id));
   };
 
   return (
     <PageContainer size="sm" className="availability-page">
-      <header className="page-header">
-        <CheckCircle size={32} className="header-icon" />
-        <h1>הזנת זמינות - אזור אישי</h1>
-        <p>כאן ניתן לעדכן את צוות הניהול לגבי זמינות לקבלת לקוחות.</p>
-      </header>
+      <PageHeader
+        icon={CheckCircle}
+        title="הזנת זמינות - אזור אישי"
+        subtitle="כאן ניתן לעדכן את צוות הניהול לגבי זמינות לקבלת לקוחות."
+      />
 
       <form onSubmit={handleSubmit} className="availability-form">
         <div className="input-group">
@@ -150,11 +128,8 @@ const EmployeeAvailabilityPage = () => {
           </div>
         </div>
 
-        {message && (
-          <p className={message.type === 'error' ? 'error-text' : 'success-text'}>
-            {message.text}
-          </p>
-        )}
+        <Alert type="error">{error}</Alert>
+        <Alert type={message?.type}>{message?.text}</Alert>
 
         <button type="submit" className="submit-btn" disabled={isSubmitting || !selectedDate}>
           {isSubmitting ? <LoadingSpinner text="מעדכן..." inline={true} /> : (

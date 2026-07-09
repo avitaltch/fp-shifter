@@ -10,12 +10,17 @@ Built with **React 19 + Vite** (Hebrew, RTL) and **Supabase** (Postgres, Auth, R
 src/
   lib/
     supabase.js      Supabase client (env-guarded)
-    api.js           ALL data access — pages never build queries themselves
+    api/             ALL data access, split by domain (services, booking,
+                     availability, shifts, assignment, dashboard, team)
+                     behind one facade — pages never build queries themselves
     dates.js         Local-time date helpers (never UTC-based)
     errors.js        RPC error code -> Hebrew message mapping
+  hooks/
+    useAsyncData.js  Fetch-on-mount lifecycle (data/loading/error/refetch)
+    useAction.js     Mutation lifecycle (busy row, friendly error, message)
   context/
     AuthContext.jsx  Single auth subscription; role comes from public.users
-  components/        Navbar, Footer, ProtectedRoute, EmptyState, ...
+  components/        Navbar, Footer, ProtectedRoute, PageHeader, Alert, ...
   pages/             One folder-less page per route
 supabase/
   schema.sql         Tables, constraints (incl. overlap-exclusion), triggers
@@ -52,6 +57,15 @@ supabase/
 5. Optionally run `supabase/seed.sql` for demo services/skills/availability.
 6. `cp .env.example .env` and fill in the project URL + anon key.
 7. `npm install && npm run dev`
+
+## Deploy (Vercel)
+
+1. Import the repo in Vercel — the Vite framework preset is detected automatically (`npm run build`, output `dist/`).
+2. Add the environment variables (Project → Settings → Environment Variables):
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+3. `vercel.json` rewrites all routes to `index.html` so React Router deep links (e.g. `/login`, `/dashboard`) work on refresh.
+4. In Supabase, set Authentication → URL Configuration → Site URL to the Vercel production URL (and add preview URLs to Redirect URLs) so invite/recovery emails land back on the deployed app.
 
 ## Scripts
 
