@@ -30,9 +30,14 @@ export async function createService({ name, description, base_price, default_dur
   );
 }
 
+const SERVICE_EDITABLE_FIELDS = ['name', 'description', 'base_price', 'default_duration'];
+
 export async function updateService(id, fields) {
+  const safe = Object.fromEntries(
+    Object.entries(fields).filter(([key]) => SERVICE_EDITABLE_FIELDS.includes(key))
+  );
   return unwrap(
-    await supabase.from('service_types').update(fields).eq('id', id).select().single()
+    await supabase.from('service_types').update(safe).eq('id', id).select().single()
   );
 }
 
@@ -143,20 +148,72 @@ export async function listOpenShifts(fromDate) {
   );
 }
 
-// Claim an unassigned shift. A concurrent claim makes the guarded update
-// match 0 rows — Supabase does NOT treat that as an error, so we must
-// check the returned row count ourselves.
-export async function claimShift(itemId, userId) {
-  const rows = unwrap(
-    await supabase
-      .from('appointment_items')
-      .update({ user_id: userId })
-      .eq('id', itemId)
-      .is('user_id', null)
-      .select()
+// Claim an unassigned shift via the claim_shift RPC, which enforces
+// skills + availability + conflicts server-side and raises SHIFT_TAKEN
+// on concurrent claims. (Direct updates of user_id are blocked by the
+// column-guard trigger for non-admins.)
+export async function claimShift(itemId) {
+  return unwrap(await supabase.rpc('claim_shift', { p_item_id: itemId }));
+}
+
+// Pure helper: can THIS user claim this open item, and if not — why not.
+// Mirrors the server-side checks in claim_shift so the UI can explain
+// instead of failing on click.
+export function claimEligibility(item, userId, { skills, availabilities, assignments }) {
+  const qualified = skills.some(
+    (s) => s.user_id === userId && s.service_type_id === item.service_type_id
   );
-  if (!rows || rows.length === 0) throw new Error('SHIFT_TAKEN');
-  return rows[0];
+  if (!qualified) return { eligible: false, reason: 'NOT_QUALIFIED' };
+
+  const available = availabilities.some(
+    (a) =>
+      a.user_id === userId &&
+      a.available_date === item.work_date &&
+      a.start_time <= item.start_time &&
+      a.end_time >= item.end_time
+  );
+  if (!available) return { eligible: false, reason: 'NOT_AVAILABLE' };
+
+  const conflict = assignments.some(
+    (x) =>
+      x.user_id === userId &&
+      x.work_date === item.work_date &&
+      x.start_time < item.end_time &&
+      x.end_time > item.start_time
+  );
+  if (conflict) return { eligible: false, reason: 'SHIFT_CONFLICT' };
+
+  return { eligible: true, reason: null };
+}
+
+// Open shifts annotated with the current user's claim eligibility.
+// NOTE: no `await` inside the array — that would serialize the requests.
+export async function getClaimableShifts(userId, fromDate) {
+  const [open, skills, availabilities, assignments] = await Promise.all([
+    listOpenShifts(fromDate),
+    supabase
+      .from('employee_skills')
+      .select('user_id, service_type_id')
+      .eq('user_id', userId)
+      .then(unwrap),
+    supabase
+      .from('availabilities')
+      .select('user_id, available_date, start_time, end_time')
+      .eq('user_id', userId)
+      .gte('available_date', fromDate)
+      .then(unwrap),
+    supabase
+      .from('appointment_items')
+      .select('user_id, work_date, start_time, end_time')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .gte('work_date', fromDate)
+      .then(unwrap),
+  ]);
+  return open.map((item) => ({
+    ...item,
+    ...claimEligibility(item, userId, { skills, availabilities, assignments }),
+  }));
 }
 
 // ---------- assignment (admin) ----------
@@ -164,23 +221,21 @@ export async function claimShift(itemId, userId) {
 export async function getAssignmentData(fromDate) {
   const [unassigned, staff, skills, availabilities, assignments] = await Promise.all([
     listOpenShifts(fromDate),
-    unwrap(
-      await supabase
-        .from('users')
-        .select('id, first_name, last_name, role')
-        .is('deleted_at', null)
-        .order('first_name')
-    ),
-    unwrap(await supabase.from('employee_skills').select('user_id, service_type_id')),
-    unwrap(await supabase.from('availabilities').select('*').gte('available_date', fromDate)),
-    unwrap(
-      await supabase
-        .from('appointment_items')
-        .select('id, user_id, work_date, start_time, end_time')
-        .not('user_id', 'is', null)
-        .is('deleted_at', null)
-        .gte('work_date', fromDate)
-    ),
+    supabase
+      .from('users')
+      .select('id, first_name, last_name, role')
+      .is('deleted_at', null)
+      .order('first_name')
+      .then(unwrap),
+    supabase.from('employee_skills').select('user_id, service_type_id').then(unwrap),
+    supabase.from('availabilities').select('*').gte('available_date', fromDate).then(unwrap),
+    supabase
+      .from('appointment_items')
+      .select('id, user_id, work_date, start_time, end_time')
+      .not('user_id', 'is', null)
+      .is('deleted_at', null)
+      .gte('work_date', fromDate)
+      .then(unwrap),
   ]);
   return { unassigned, staff, skills, availabilities, assignments };
 }
@@ -229,20 +284,25 @@ export async function assignShift(itemId, userId) {
   return rows[0];
 }
 
+// Cancel an appointment (admin RPC): sets the status AND soft-deletes the
+// items atomically so the booked span is actually freed for re-booking.
+export async function cancelAppointment(appointmentId) {
+  return unwrap(await supabase.rpc('cancel_appointment', { p_appointment_id: appointmentId }));
+}
+
 // ---------- dashboard (admin) ----------
 
 export async function getDashboardData(fromDate, toDate) {
   const [appointments, staffCount] = await Promise.all([
-    unwrap(
-      await supabase
-        .from('appointments')
-        .select('*, customers(first_name, last_name), appointment_items(*, service_types(name), users(first_name, last_name))')
-        .gte('visit_date', fromDate)
-        .lte('visit_date', toDate)
-        .neq('status', 'Cancelled')
-        .is('deleted_at', null)
-        .order('visit_date')
-    ),
+    supabase
+      .from('appointments')
+      .select('*, customers(first_name, last_name), appointment_items(*, service_types(name), users(first_name, last_name))')
+      .gte('visit_date', fromDate)
+      .lte('visit_date', toDate)
+      .neq('status', 'Cancelled')
+      .is('deleted_at', null)
+      .order('visit_date')
+      .then(unwrap),
     supabase
       .from('users')
       .select('id', { count: 'exact', head: true })
@@ -259,14 +319,13 @@ export async function getDashboardData(fromDate, toDate) {
 
 export async function listStaffWithSkills() {
   const [staff, skills] = await Promise.all([
-    unwrap(
-      await supabase
-        .from('users')
-        .select('id, first_name, last_name, role, phone, hire_date')
-        .is('deleted_at', null)
-        .order('first_name')
-    ),
-    unwrap(await supabase.from('employee_skills').select('id, user_id, service_type_id')),
+    supabase
+      .from('users')
+      .select('id, first_name, last_name, role, phone, hire_date')
+      .is('deleted_at', null)
+      .order('first_name')
+      .then(unwrap),
+    supabase.from('employee_skills').select('id, user_id, service_type_id').then(unwrap),
   ]);
   return { staff, skills };
 }

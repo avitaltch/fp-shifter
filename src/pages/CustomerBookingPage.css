@@ -18,6 +18,20 @@
   margin-bottom: 1rem;
 }
 
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .services-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -26,17 +40,23 @@
 
 .service-card {
   border: 2px solid var(--border-color, #E5E7EB);
-  border-radius: 8px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
   padding: 1rem;
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  transition: all 0.2s ease;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  text-align: right;
+  font: inherit;
+  width: 100%;
 }
 
 .service-card:hover {
   border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
 }
 
 .service-card.selected {
@@ -49,9 +69,23 @@
   font-size: 1.1rem;
 }
 
-.price {
+.service-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.service-meta .duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   color: var(--text-secondary);
-  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.price {
+  color: var(--primary);
+  font-weight: 700;
 }
 
 .check-icon {
@@ -88,10 +122,55 @@
   font-size: 1rem;
 }
 
+/* Chip grid for picking a time — one tap instead of opening a dropdown */
+.slots-area {
+  margin-top: 1.25rem;
+}
+
+.slots-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+}
+
+.slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 0.5rem;
+}
+
+.slot-chip {
+  border: 1.5px solid var(--border-light);
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.slot-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.slot-chip.selected {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
 .booking-summary {
+  position: sticky;
+  bottom: 0;
   margin-top: 3rem;
-  padding-top: 1.5rem;
+  padding: 1rem 1.25rem;
   border-top: 1px solid var(--border-color, #E5E7EB);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -102,7 +181,13 @@
 .summary-details {
   display: flex;
   gap: 1.5rem;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
+  flex-wrap: wrap;
+}
+
+.summary-when {
+  color: var(--primary);
+  font-weight: 500;
 }
 
 .summary-details span {

@@ -39,14 +39,13 @@ const renderPage = () =>
 // otherwise jsdom constraint validation blocks the form submission).
 const visitDate = addDaysString(7);
 
-// Picks a date + slot and fills personal details (service already selected).
+// Picks a date + slot chip and fills personal details (service already selected).
 async function completeForm({ phone = '050-1234567' } = {}) {
   fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
     target: { value: visitDate },
   });
 
-  const timeSelect = await screen.findByLabelText('שעות פנויות');
-  fireEvent.change(timeSelect, { target: { value: '10:00:00' } });
+  fireEvent.click(await screen.findByRole('button', { name: '10:00' }));
 
   fireEvent.change(screen.getByLabelText('שם פרטי'), { target: { value: 'דנה' } });
   fireEvent.change(screen.getByLabelText('שם משפחה'), { target: { value: 'לוי' } });
@@ -90,7 +89,7 @@ describe('CustomerBookingPage', () => {
     expect(screen.getByText('שעה ו-45 דקות')).toBeInTheDocument();
   });
 
-  it('fetches slots with the chosen date and service ids and lists them as HH:MM', async () => {
+  it('fetches slots with the chosen date and service ids and shows them as HH:MM chips', async () => {
     renderPage();
 
     fireEvent.click(await screen.findByText('תספורת'));
@@ -102,12 +101,26 @@ describe('CustomerBookingPage', () => {
       expect(getAvailableSlots).toHaveBeenCalledWith(visitDate, ['s1']);
     });
 
-    const timeSelect = await screen.findByLabelText('שעות פנויות');
-    const options = Array.from(timeSelect.querySelectorAll('option')).map(
-      (o) => o.textContent
+    expect(await screen.findByRole('button', { name: '10:00' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '11:00' })).toBeInTheDocument();
+  });
+
+  it('marks the chosen slot chip as selected', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+
+    const chip = await screen.findByRole('button', { name: '10:00' });
+    fireEvent.click(chip);
+
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '11:00' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
     );
-    expect(options).toContain('10:00');
-    expect(options).toContain('11:00');
   });
 
   it('shows a message when there are no free slots for the date', async () => {

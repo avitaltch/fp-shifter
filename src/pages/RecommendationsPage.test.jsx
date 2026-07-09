@@ -1,11 +1,11 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import RecommendationsPage from './RecommendationsPage';
-import { listOpenShifts, claimShift } from '../lib/api';
+import { getClaimableShifts, claimShift } from '../lib/api';
 import { todayString } from '../lib/dates';
 
 vi.mock('../lib/api', () => ({
-  listOpenShifts: vi.fn(),
+  getClaimableShifts: vi.fn(),
   claimShift: vi.fn(),
 }));
 
@@ -27,6 +27,8 @@ const mockOpenShifts = [
     end_time: '11:00:00',
     service_types: { name: 'צבע' },
     appointments: { visit_date: '2026-07-20', customers: { first_name: 'ישראל', last_name: 'ישראלי' } },
+    eligible: true,
+    reason: null,
   },
   {
     id: 'r2',
@@ -35,26 +37,28 @@ const mockOpenShifts = [
     end_time: '12:30:00',
     service_types: { name: 'תספורת' },
     appointments: { visit_date: '2026-07-21', customers: { first_name: 'יעל', last_name: 'כהן' } },
+    eligible: true,
+    reason: null,
   },
 ];
 
 describe('RecommendationsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listOpenShifts.mockResolvedValue(mockOpenShifts);
+    getClaimableShifts.mockResolvedValue(mockOpenShifts);
   });
 
-  it('fetches open shifts from today onwards and displays them', async () => {
+  it('fetches claimable shifts for the user from today onwards and displays them', async () => {
     render(<RecommendationsPage />);
 
     expect(await screen.findByText('צבע')).toBeInTheDocument();
-    expect(listOpenShifts).toHaveBeenCalledWith(todayString());
+    expect(getClaimableShifts).toHaveBeenCalledWith('user-1', todayString());
     expect(screen.getByText(/ישראל\s+ישראלי/)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /אני פנוי\/ה/ })).toHaveLength(2);
   });
 
   it('shows an empty state when there are no open shifts', async () => {
-    listOpenShifts.mockResolvedValue([]);
+    getClaimableShifts.mockResolvedValue([]);
     render(<RecommendationsPage />);
 
     expect(
@@ -62,15 +66,31 @@ describe('RecommendationsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('claims a shift for the logged-in user and removes it from the list', async () => {
-    claimShift.mockResolvedValue({ id: 'r1', user_id: 'user-1' });
+  it('shows ineligible shifts without a claim button and explains why', async () => {
+    getClaimableShifts.mockResolvedValue([
+      mockOpenShifts[0],
+      { ...mockOpenShifts[1], eligible: false, reason: 'NOT_QUALIFIED' },
+    ]);
+    render(<RecommendationsPage />);
+    await screen.findByText('צבע');
+
+    // Only the eligible shift gets a claim button
+    expect(screen.getAllByRole('button', { name: /אני פנוי\/ה/ })).toHaveLength(1);
+    expect(screen.getByText('דורש מיומנות שאינה משויכת אליך')).toBeInTheDocument();
+    expect(
+      screen.getByText('משמרות פתוחות נוספות (לא זמינות לך)')
+    ).toBeInTheDocument();
+  });
+
+  it('claims a shift via the RPC and removes it from the list', async () => {
+    claimShift.mockResolvedValue({ item_id: 'r1', user_id: 'user-1' });
     render(<RecommendationsPage />);
     await screen.findByText('צבע');
 
     fireEvent.click(screen.getAllByRole('button', { name: /אני פנוי\/ה/ })[0]);
 
     await waitFor(() => {
-      expect(claimShift).toHaveBeenCalledWith('r1', 'user-1');
+      expect(claimShift).toHaveBeenCalledWith('r1');
     });
     expect(
       await screen.findByText('מעולה! המשמרת שובצה אליך בהצלחה.')
@@ -92,7 +112,7 @@ describe('RecommendationsPage', () => {
     // The other item is also blocked during the claim
     expect(screen.getByRole('button', { name: /אני פנוי\/ה/ })).toBeDisabled();
 
-    resolveClaim({ id: 'r1', user_id: 'user-1' });
+    resolveClaim({ item_id: 'r1', user_id: 'user-1' });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /אני פנוי\/ה/ })).not.toBeDisabled();
     });
@@ -101,7 +121,7 @@ describe('RecommendationsPage', () => {
   it('shows the SHIFT_TAKEN message and refetches when the claim race is lost', async () => {
     claimShift.mockRejectedValue(new Error('SHIFT_TAKEN'));
     // After the lost race the refetch shows the list without the taken shift
-    listOpenShifts
+    getClaimableShifts
       .mockResolvedValueOnce(mockOpenShifts)
       .mockResolvedValueOnce([mockOpenShifts[1]]);
 
@@ -115,7 +135,7 @@ describe('RecommendationsPage', () => {
     ).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(listOpenShifts).toHaveBeenCalledTimes(2);
+      expect(getClaimableShifts).toHaveBeenCalledTimes(2);
     });
     await waitFor(() => {
       expect(screen.queryByText('צבע')).not.toBeInTheDocument();
@@ -124,7 +144,7 @@ describe('RecommendationsPage', () => {
   });
 
   it('shows an error message when loading fails', async () => {
-    listOpenShifts.mockRejectedValue(new Error('network'));
+    getClaimableShifts.mockRejectedValue(new Error('network'));
     render(<RecommendationsPage />);
 
     expect(

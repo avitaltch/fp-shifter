@@ -62,11 +62,11 @@ async function stubBookAppointment(page) {
   });
 }
 
-// Select a service, pick date + slot, fill personal details.
+// Select a service, pick date + slot chip, fill personal details.
 async function fillBookingForm(page, { phone = '050-1234567' } = {}) {
   await page.locator('.service-card', { hasText: 'תספורת' }).click();
   await page.locator('#visitDate').fill(visitDate);
-  await page.locator('#visitTime').selectOption('10:00:00');
+  await page.locator('.slot-chip', { hasText: '10:00' }).click();
   await page.locator('#firstName').fill('דנה');
   await page.locator('#lastName').fill('לוי');
   await page.locator('#phone').fill(phone);
@@ -97,13 +97,14 @@ test.describe('Booking Flow E2E', () => {
     await expect(haircutCard).toBeVisible();
     await expect(haircutCard.locator('.price')).toHaveText('₪150');
 
-    // Selecting a service + date surfaces the slot dropdown fed by the RPC stub
+    // Selecting a service + date surfaces the slot chips fed by the RPC stub
     await haircutCard.click();
     await page.locator('#visitDate').fill(visitDate);
-    const timeSelect = page.locator('#visitTime');
-    await expect(timeSelect).toBeVisible();
-    await expect(timeSelect.locator('option', { hasText: '10:00' })).toHaveCount(1);
-    await timeSelect.selectOption('10:00:00');
+    const slotChip = page.locator('.slot-chip', { hasText: '10:00' });
+    await expect(slotChip).toBeVisible();
+    await expect(page.locator('.slot-chip', { hasText: '11:00' })).toBeVisible();
+    await slotChip.click();
+    await expect(slotChip).toHaveAttribute('aria-pressed', 'true');
 
     await page.locator('#firstName').fill('דנה');
     await page.locator('#lastName').fill('לוי');

@@ -75,6 +75,38 @@
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
   border-bottom: 1px solid var(--border-color, #E5E7EB);
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.apt-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cancel-apt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--danger);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.cancel-apt-btn:hover:not(:disabled) {
+  background: var(--danger-lightest);
+  border-color: var(--danger-light);
+}
+
+.cancel-apt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .status-badge {

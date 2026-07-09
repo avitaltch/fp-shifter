@@ -19,16 +19,19 @@ src/
   pages/             One folder-less page per route
 supabase/
   schema.sql         Tables, constraints (incl. overlap-exclusion), triggers
-  rls.sql            Row Level Security policies (DB-enforced roles)
-  functions.sql      get_available_slots + book_appointment + admin_set_user_role
+  rls.sql            RLS policies + column-guard trigger (DB-enforced roles)
+  functions.sql      get_available_slots, book_appointment, claim_shift,
+                     cancel_appointment, admin_set_user_role
   seed.sql           Optional demo data
   migrate_v1_to_v2.sql  One-time migration for a pre-existing v1 database
 ```
 
 ### Security model
-- **Roles live in `public.users.role`**, guarded by RLS (`with check` pins a user's own role; only `admin_set_user_role` can change it). `user_metadata` is never trusted.
-- **Public sign-up is disabled** — employees are invited by an Admin (Supabase Dashboard → Authentication → Invite user). Anonymous visitors can only read the service catalog and call the two booking RPCs.
+- **Roles live in `public.users.role`**, guarded by RLS (`with check` pins a user's own role; only `admin_set_user_role` can change it — and never one's own). `user_metadata` is never trusted.
+- **Public sign-up is disabled** — employees are invited by an Admin (Supabase Dashboard → Authentication → Invite user). Anonymous visitors can only read the service catalog and call the two booking RPCs; the security-definer helper functions (`role_of`, `qualified_employees`, ...) are revoked from client roles.
 - **Booking is a transactional security-definer RPC** (`book_appointment`): server-side pricing, skill matching, availability + conflict checks, atomic customer/appointment/items creation. Double-booking is additionally blocked by a Postgres exclusion constraint.
+- **Employees can only change `status`/`notes` on their own items** — a column-guard trigger rejects every other column, so times, assignees, and soft-deletes can't be tampered with from the client. Claiming an open shift goes through the `claim_shift` RPC, which enforces skills, availability, and conflicts server-side.
+- **Cancelling** goes through `cancel_appointment` (admin-only RPC) which sets the status *and* soft-deletes the items in one transaction, so the booked span is genuinely freed for re-booking.
 - Client route guards (`ProtectedRoute`) are UX only; enforcement is in the database.
 
 ### Booking flow

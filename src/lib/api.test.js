@@ -2,8 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { supabase } from './supabase';
 import {
   claimShift,
+  claimEligibility,
   assignShift,
   updateShiftStatus,
+  updateService,
+  cancelAppointment,
   eligibleEmployeesFor,
 } from './api';
 
@@ -34,40 +37,129 @@ describe('claimShift', () => {
     vi.clearAllMocks();
   });
 
-  it('throws SHIFT_TAKEN when the guarded update matches 0 rows', async () => {
-    const query = createQuery({ data: [], error: null });
-    supabase.from.mockReturnValue(query);
+  it('claims via the claim_shift RPC (server enforces skills/availability/races)', async () => {
+    const result = { item_id: 'item-1', user_id: 'user-1' };
+    supabase.rpc.mockResolvedValue({ data: result, error: null });
 
-    await expect(claimShift('item-1', 'user-1')).rejects.toThrow('SHIFT_TAKEN');
+    await expect(claimShift('item-1')).resolves.toEqual(result);
+    expect(supabase.rpc).toHaveBeenCalledWith('claim_shift', { p_item_id: 'item-1' });
   });
 
-  it('throws SHIFT_TAKEN when rows are null', async () => {
-    const query = createQuery({ data: null, error: null });
-    supabase.from.mockReturnValue(query);
+  it('propagates RPC errors (SHIFT_TAKEN on a lost race)', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('SHIFT_TAKEN') });
 
-    await expect(claimShift('item-1', 'user-1')).rejects.toThrow('SHIFT_TAKEN');
+    await expect(claimShift('item-1')).rejects.toThrow('SHIFT_TAKEN');
   });
 
-  it('returns the claimed row and guards on user_id being null', async () => {
-    const row = { id: 'item-1', user_id: 'user-1' };
-    const query = createQuery({ data: [row], error: null });
-    supabase.from.mockReturnValue(query);
+  it('propagates NOT_QUALIFIED from the server-side skill check', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('NOT_QUALIFIED') });
 
-    await expect(claimShift('item-1', 'user-1')).resolves.toEqual(row);
+    await expect(claimShift('item-1')).rejects.toThrow('NOT_QUALIFIED');
+  });
+});
 
-    expect(supabase.from).toHaveBeenCalledWith('appointment_items');
-    expect(query.update).toHaveBeenCalledWith({ user_id: 'user-1' });
-    expect(query.eq).toHaveBeenCalledWith('id', 'item-1');
-    // The race guard: only rows that are still unassigned may be updated
-    expect(query.is).toHaveBeenCalledWith('user_id', null);
-    expect(query.select).toHaveBeenCalled();
+describe('claimEligibility (pure)', () => {
+  const item = {
+    service_type_id: 'svc-1',
+    work_date: '2026-07-20',
+    start_time: '10:00:00',
+    end_time: '11:00:00',
+  };
+  const base = {
+    skills: [{ user_id: 'me', service_type_id: 'svc-1' }],
+    availabilities: [
+      { user_id: 'me', available_date: '2026-07-20', start_time: '08:00:00', end_time: '16:00:00' },
+    ],
+    assignments: [],
+  };
+
+  it('is eligible when qualified, available and conflict-free', () => {
+    expect(claimEligibility(item, 'me', base)).toEqual({ eligible: true, reason: null });
   });
 
-  it('propagates supabase errors', async () => {
-    const query = createQuery({ data: null, error: new Error('boom') });
+  it('returns NOT_QUALIFIED without the matching skill', () => {
+    expect(claimEligibility(item, 'me', { ...base, skills: [] })).toEqual({
+      eligible: false,
+      reason: 'NOT_QUALIFIED',
+    });
+  });
+
+  it('returns NOT_AVAILABLE when no window covers the span', () => {
+    const data = {
+      ...base,
+      availabilities: [
+        { user_id: 'me', available_date: '2026-07-20', start_time: '10:30:00', end_time: '16:00:00' },
+      ],
+    };
+    expect(claimEligibility(item, 'me', data)).toEqual({
+      eligible: false,
+      reason: 'NOT_AVAILABLE',
+    });
+  });
+
+  it('returns SHIFT_CONFLICT on an overlapping existing assignment', () => {
+    const data = {
+      ...base,
+      assignments: [
+        { user_id: 'me', work_date: '2026-07-20', start_time: '10:30:00', end_time: '11:30:00' },
+      ],
+    };
+    expect(claimEligibility(item, 'me', data)).toEqual({
+      eligible: false,
+      reason: 'SHIFT_CONFLICT',
+    });
+  });
+
+  it('does not treat back-to-back assignments as conflicts', () => {
+    const data = {
+      ...base,
+      assignments: [
+        { user_id: 'me', work_date: '2026-07-20', start_time: '09:00:00', end_time: '10:00:00' },
+      ],
+    };
+    expect(claimEligibility(item, 'me', data).eligible).toBe(true);
+  });
+});
+
+describe('updateService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('only sends allowlisted fields (no deleted_at smuggling)', async () => {
+    const row = { id: 'svc-1', name: 'צבע' };
+    const query = createQuery({ data: row, error: null });
     supabase.from.mockReturnValue(query);
 
-    await expect(claimShift('item-1', 'user-1')).rejects.toThrow('boom');
+    await updateService('svc-1', {
+      name: 'צבע',
+      base_price: 200,
+      deleted_at: '2026-01-01',
+      id: 'evil',
+    });
+
+    expect(query.update).toHaveBeenCalledWith({ name: 'צבע', base_price: 200 });
+  });
+});
+
+describe('cancelAppointment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('cancels via the cancel_appointment RPC', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: null });
+
+    await cancelAppointment('apt-1');
+    expect(supabase.rpc).toHaveBeenCalledWith('cancel_appointment', {
+      p_appointment_id: 'apt-1',
+    });
+  });
+
+  it('propagates RPC errors', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('FORBIDDEN') });
+
+    await expect(cancelAppointment('apt-1')).rejects.toThrow('FORBIDDEN');
   });
 });
 

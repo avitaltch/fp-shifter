@@ -138,8 +138,11 @@ test.describe('Employee Flow E2E', () => {
     await page.getByRole('button', { name: 'שמור זמינות' }).click();
 
     // Inline success message (no alert() anymore) + the entry in the list
+    // (scoped to the list — the success message repeats the same times)
     await expect(page.getByText(/זמינות נשמרה/)).toBeVisible();
-    await expect(page.getByText(/08:00-\s*16:00/)).toBeVisible();
+    await expect(
+      page.locator('.availability-entry').getByText(/08:00-\s*16:00/)
+    ).toBeVisible();
   });
 
   test('Employee sees start/end validation inline', async ({ page }) => {
