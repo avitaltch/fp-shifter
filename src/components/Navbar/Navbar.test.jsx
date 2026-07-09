@@ -95,14 +95,20 @@ describe('Navbar', () => {
     renderNavbar();
 
     const menuList = document.querySelector('.nav-menu');
-    const menuIcon = document.querySelector('.menu-icon');
+    const menuToggle = document.querySelector('.menu-icon');
     expect(menuList).not.toHaveClass('active');
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(menuToggle).toHaveAttribute('aria-label', 'פתח תפריט');
 
-    fireEvent.click(menuIcon);
+    fireEvent.click(menuToggle);
     expect(menuList).toHaveClass('active');
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(menuToggle).toHaveAttribute('aria-label', 'סגור תפריט');
+    expect(document.querySelector('.nav-backdrop')).toBeInTheDocument();
 
-    fireEvent.click(menuIcon);
+    fireEvent.click(menuToggle);
     expect(menuList).not.toHaveClass('active');
+    expect(document.querySelector('.nav-backdrop')).not.toBeInTheDocument();
   });
 
   it('closes the mobile menu when a navigation link is clicked', () => {
@@ -115,5 +121,16 @@ describe('Navbar', () => {
 
     fireEvent.click(screen.getByRole('link', { name: /הזמנת תור/ }));
     expect(menuList).not.toHaveClass('active');
+  });
+
+  it('closes the mobile menu when the backdrop is clicked', () => {
+    authAs(null);
+    renderNavbar();
+
+    fireEvent.click(document.querySelector('.menu-icon'));
+    expect(document.querySelector('.nav-menu')).toHaveClass('active');
+
+    fireEvent.click(document.querySelector('.nav-backdrop'));
+    expect(document.querySelector('.nav-menu')).not.toHaveClass('active');
   });
 });

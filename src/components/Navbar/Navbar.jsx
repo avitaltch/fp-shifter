@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, Menu, LogOut, LogIn, Users, Star, Briefcase } from 'lucide-react';
-import { useState } from 'react';
+import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, Menu, X, LogOut, LogIn, Users, Star, Briefcase } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import './Navbar.css';
 
@@ -11,6 +11,7 @@ const Navbar = () => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
+    setIsOpen(false);
     await signOut();
     navigate('/login');
   };
@@ -20,19 +21,47 @@ const Navbar = () => {
 
   const isStaff = role === 'Employee' || role === 'Admin';
 
+  // Close the drawer on route change and unlock body scroll
+  useEffect(() => {
+    setIsOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = isOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   return (
     <nav className="navbar">
       <div className="navbar-container">
-        <Link to="/" className="navbar-logo">
+        <Link to="/" className="navbar-logo" onClick={closeMenu}>
           <Scissors className="logo-icon" />
           <span>ShiftSync</span>
         </Link>
 
-        <div className="menu-icon" onClick={() => setIsOpen(!isOpen)}>
-          <Menu />
-        </div>
+        <button
+          type="button"
+          className="menu-icon"
+          onClick={() => setIsOpen((open) => !open)}
+          aria-label={isOpen ? 'סגור תפריט' : 'פתח תפריט'}
+          aria-expanded={isOpen}
+          aria-controls="primary-nav"
+        >
+          {isOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
 
-        <ul className={isOpen ? 'nav-menu active' : 'nav-menu'}>
+        {isOpen && (
+          <button
+            type="button"
+            className="nav-backdrop"
+            aria-label="סגור תפריט"
+            onClick={closeMenu}
+          />
+        )}
+
+        <ul id="primary-nav" className={isOpen ? 'nav-menu active' : 'nav-menu'}>
           {/* Customer View */}
           <li className="nav-item">
             <Link to="/book" className={`nav-links ${isActive('/book')}`} onClick={closeMenu}>
@@ -98,7 +127,7 @@ const Navbar = () => {
           {/* Auth Actions */}
           <li className="nav-item auth-item">
             {session ? (
-              <button onClick={handleLogout} className="nav-links logout-btn">
+              <button type="button" onClick={handleLogout} className="nav-links logout-btn">
                 <LogOut size={18} />
                 התנתק
               </button>

@@ -192,3 +192,96 @@
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
 }
+
+@media (max-width: 768px) {
+  .dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .dashboard-header h1 {
+    font-size: 1.35rem;
+    line-height: 1.3;
+  }
+
+  .date-display {
+    font-size: 1rem;
+    align-self: stretch;
+    text-align: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+
+  .stat-card {
+    padding: 1rem;
+    gap: 0.75rem;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .stat-icon {
+    padding: 0.65rem;
+  }
+
+  .stat-content h3 {
+    font-size: 0.85rem;
+  }
+
+  .stat-number {
+    font-size: 1.5rem;
+  }
+
+  .appointment-card {
+    padding: 1rem;
+  }
+
+  .apt-header {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .apt-header-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .cancel-apt-btn {
+    min-height: 40px;
+    padding: 0.45rem 0.75rem;
+  }
+
+  .timeline-chain {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .timeline-item {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .chain-arrow {
+    transform: rotate(-90deg);
+    align-self: center;
+    margin: 0;
+  }
+
+  .appointments-list.compact {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 400px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

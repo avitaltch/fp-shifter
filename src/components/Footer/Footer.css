@@ -1,7 +1,8 @@
 .footer {
   background-color: var(--bg-surface);
   border-top: 1px solid var(--border-light);
-  padding: 2rem 0;
+  padding: 2rem 1rem;
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
   text-align: center;
   margin-top: auto;
 }
