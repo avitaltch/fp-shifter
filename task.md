@@ -1,0 +1,10 @@
+- [x] Execute `schema.sql` and `rls.sql` on remote database to initialize the tables
+- [x] Rename `Manager` to `Admin` in frontend components (`ProtectedRoute`, `App`, etc.)
+- [x] Refactor routing to match module 6 design:
+  - [x] `/manager/dashboard` -> `/admin/dashboard`
+  - [x] `/manager/assignment` -> `/admin/assign/:shiftId` (Optional shiftId parameter)
+  - [x] `/booking` -> `/book/:businessId`
+  - [x] Update Navbar links and tests to reflect these new paths
+- [x] Implement `ServiceManagementPage.jsx` at `/admin/services`
+- [x] Implement `RecommendationsPage.jsx` at `/employee/recommendations`
+- [x] Test the new functionalities locally (Unit tests + UI)

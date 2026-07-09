@@ -10,6 +10,8 @@ import BookingSuccessPage from './pages/BookingSuccessPage';
 import EmployeeAvailabilityPage from './pages/EmployeeAvailabilityPage';
 import MyShiftsPage from './pages/MyShiftsPage';
 import AboutPage from './pages/AboutPage';
+import ServiceManagementPage from './pages/ServiceManagementPage';
+import RecommendationsPage from './pages/RecommendationsPage';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
 
 function App() {
@@ -21,28 +23,39 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/booking" element={<CustomerBookingPage />} />
-          <Route path="/booking/success" element={<BookingSuccessPage />} />
+          <Route path="/book/:businessId" element={<CustomerBookingPage />} />
+          <Route path="/book/:businessId/success" element={<BookingSuccessPage />} />
           
-          <Route path="/manager/dashboard" element={
-            <ProtectedRoute allowedRoles={['Manager']}>
+          <Route path="/admin/dashboard" element={
+            <ProtectedRoute allowedRoles={['Admin']}>
               <ManagerDashboardPage />
             </ProtectedRoute>
           } />
-          <Route path="/manager/assignment" element={
-            <ProtectedRoute allowedRoles={['Manager']}>
+          <Route path="/admin/assign/:shiftId?" element={
+            <ProtectedRoute allowedRoles={['Admin']}>
               <ShiftAssignmentPage />
             </ProtectedRoute>
           } />
           
           <Route path="/employee/availability" element={
-            <ProtectedRoute allowedRoles={['Employee', 'Manager']}>
+            <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
               <EmployeeAvailabilityPage />
             </ProtectedRoute>
           } />
           <Route path="/employee/shifts" element={
-            <ProtectedRoute allowedRoles={['Employee', 'Manager']}>
+            <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
               <MyShiftsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/employee/recommendations" element={
+            <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
+              <RecommendationsPage />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/admin/services" element={
+            <ProtectedRoute allowedRoles={['Admin']}>
+              <ServiceManagementPage />
             </ProtectedRoute>
           } />
         </Routes>

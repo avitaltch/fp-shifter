@@ -9,7 +9,9 @@ const LandingPage = () => {
         <h1 className="hero-title">ניהול משמרות, עכשיו <span className="text-primary">ללא חיכוך</span></h1>
         <p className="hero-subtitle">פלטפורמה חכמה, קלה ונקייה לתכנון משמרות העובדים שלך.</p>
         <div className="hero-actions">
-          <Link to="/dashboard" className="btn-primary">כניסה למערכת</Link>
+          <Link to="/book/1" className="btn-primary">
+            הזמנת תור חדש
+          </Link>
           <Link to="/about" className="btn-secondary">קרא עוד</Link>
         </div>
       </section>

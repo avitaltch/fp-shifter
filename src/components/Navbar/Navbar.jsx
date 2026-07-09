@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, UserPlus, Menu, LogOut, LogIn } from 'lucide-react';
+import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, UserPlus, Menu, LogOut, LogIn, Users, Star } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import './Navbar.css';
@@ -46,18 +46,36 @@ const Navbar = () => {
         <ul className={isOpen ? 'nav-menu active' : 'nav-menu'}>
           {/* Customer View */}
           <li className="nav-item">
-            <Link to="/booking" className={`nav-links ${isActive('/booking')}`} onClick={() => setIsOpen(false)}>
+            <Link to="/book/1" className={`nav-links ${isActive('/book/1')}`} onClick={() => setIsOpen(false)}>
               <Calendar size={18} />
               הזמנת תור
             </Link>
           </li>
-          {/* Manager View */}
-          <li className="nav-item">
-            <Link to="/manager/dashboard" className={`nav-links ${isActive('/manager/dashboard')}`} onClick={() => setIsOpen(false)}>
-              <LayoutDashboard size={18} />
-              דאשבורד מנהל
-            </Link>
-          </li>
+          
+          {/* Admin View */}
+          {session?.user?.user_metadata?.role === 'Admin' && (
+            <>
+              <li className="nav-item">
+                <Link to="/admin/dashboard" className={`nav-links ${isActive('/admin/dashboard')}`} onClick={() => setIsOpen(false)}>
+                  <LayoutDashboard size={18} />
+                  לוח בקרה
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/admin/assign" className={`nav-links ${isActive('/admin/assign')}`} onClick={() => setIsOpen(false)}>
+                  <Users size={18} />
+                  שיבוץ משמרות
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/admin/services" className={`nav-links ${isActive('/admin/services')}`} onClick={() => setIsOpen(false)}>
+                  <Star size={18} />
+                  ניהול שירותים
+                </Link>
+              </li>
+            </>
+          )}
+
           {/* Employee View */}
           <li className="nav-item">
             <Link to="/employee/shifts" className={`nav-links ${isActive('/employee/shifts')}`} onClick={() => setIsOpen(false)}>
@@ -69,6 +87,12 @@ const Navbar = () => {
             <Link to="/employee/availability" className={`nav-links ${isActive('/employee/availability')}`} onClick={() => setIsOpen(false)}>
               <CheckCircle size={18} />
               הזנת זמינות
+            </Link>
+          </li>
+          <li className="nav-item">
+            <Link to="/employee/recommendations" className={`nav-links ${isActive('/employee/recommendations')}`} onClick={() => setIsOpen(false)}>
+              <Star size={18} />
+              המלצות עבורי
             </Link>
           </li>
           

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Check, Clock, Calendar as CalendarIcon, User, Scissors } from 'lucide-react';
 import PageContainer from '../components/PageContainer/PageContainer';
@@ -8,6 +8,7 @@ import './CustomerBookingPage.css';
 
 const CustomerBookingPage = () => {
   const navigate = useNavigate();
+  const { businessId } = useParams();
   const [serviceTypes, setServiceTypes] = useState([]);
   const [selectedServices, setSelectedServices] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
@@ -138,7 +139,7 @@ const CustomerBookingPage = () => {
         
       if (itemsError) throw itemsError;
 
-      navigate('/booking/success');
+      navigate(`/book/${businessId || 1}/success`);
     } catch (err) {
       console.error(err);
       alert("שגיאת תקשורת, יש לנסות שוב");

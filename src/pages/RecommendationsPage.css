@@ -1,0 +1,90 @@
+.recommendations-page {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.recommendations-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.recommendation-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.recommendation-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.rec-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+}
+
+.rec-service {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.rec-service h3 {
+  margin: 0;
+  color: var(--text-color);
+}
+
+.duration-badge {
+  background: var(--surface-hover);
+  padding: 0.25rem 0.75rem;
+  border-radius: 99px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-light);
+}
+
+.rec-meta {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-light);
+  font-size: 0.9rem;
+}
+
+.customer-name {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.rec-action {
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 600px) {
+  .recommendation-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .rec-action {
+    width: 100%;
+  }
+  
+  .rec-action button {
+    width: 100%;
+    justify-content: center;
+  }
+}

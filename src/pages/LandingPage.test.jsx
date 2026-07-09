@@ -17,9 +17,9 @@ describe('LandingPage Component', () => {
 
   it('renders action buttons', () => {
     renderWithRouter(<LandingPage />);
-    const link = screen.getByRole('link', { name: /כניסה למערכת/i });
+    const link = screen.getByRole('link', { name: /הזמנת תור חדש/i });
     expect(link).toBeInTheDocument();
-    expect(link).toHaveAttribute('href', '/dashboard');
+    expect(link).toHaveAttribute('href', '/book/1');
   });
 
   it('renders feature cards', () => {

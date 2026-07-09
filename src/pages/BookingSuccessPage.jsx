@@ -1,9 +1,11 @@
-import { Link } from 'react-router-dom';
-import { CheckCircle, Calendar, User } from 'lucide-react';
+import { Link, useParams } from 'react-router-dom';
+import { CheckCircle, Calendar, User, ArrowRight } from 'lucide-react';
 import PageContainer from '../components/PageContainer/PageContainer';
 import './BookingSuccessPage.css';
 
 const BookingSuccessPage = () => {
+  const { businessId } = useParams();
+
   return (
     <PageContainer size="sm" className="success-page">
       <div className="success-header">
@@ -18,7 +20,10 @@ const BookingSuccessPage = () => {
           <p><strong>זמן מוערך:</strong> שעה ו-45 דקות</p>
         </div>
 
-        <Link to="/" className="btn-secondary">חזרה לדף הבית</Link>
+        <Link to={`/book/${businessId || 1}`} className="btn-secondary">
+          <ArrowRight size={18} />
+          חזרה להזמנת תור נוסף
+        </Link>
       </div>
     </PageContainer>
   );
