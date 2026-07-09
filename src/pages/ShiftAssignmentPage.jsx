@@ -3,6 +3,7 @@ import { Users, CheckCircle, Clock } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './ShiftAssignmentPage.css';
 
 const ShiftAssignmentPage = () => {
@@ -74,15 +75,15 @@ const ShiftAssignmentPage = () => {
   };
 
   return (
-    <PageContainer size="md">
+    <PageContainer size="md" className="assignment-page">
       <header className="page-header">
         <Users size={32} className="header-icon" />
-        <h1>ניהול שיבוצים למשמרות</h1>
-        <p>מסך זה מאפשר לשבץ עובדים באופן ידני עבור טיפולים שלא שובצו אוטומטית.</p>
+        <h1>שיבוץ משמרות</h1>
+        <p>הקצה עובדים למשמרות חסרות או נהל שיבוצים קיימים.</p>
       </header>
         
-      {loading && <div className="loading-state">טוען נתונים...</div>}
-      {error && <div className="error-state">{error}</div>}
+      {loading && <LoadingSpinner text="טוען נתונים..." />}
+      {error && <p className="error-text">{error}</p>}
       
       {!loading && !error && unassignedItems.length === 0 && (
         <EmptyState 

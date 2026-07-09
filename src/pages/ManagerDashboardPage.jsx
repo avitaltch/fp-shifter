@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Users, Calendar, Clock, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import PageContainer from '../components/PageContainer/PageContainer';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import EmptyState from '../components/EmptyState/EmptyState';
 import './ManagerDashboardPage.css';
 
@@ -49,7 +50,11 @@ const ManagerDashboardPage = () => {
     fetchDashboardData();
   }, []);
 
-  if (loading) return <PageContainer size="lg" className="dashboard-page"><p>טוען נתונים...</p></PageContainer>;
+  if (loading) return (
+    <PageContainer size="lg" className="dashboard-page">
+      <LoadingSpinner text="טוען נתונים..." fullScreen={true} />
+    </PageContainer>
+  );
   if (error) return <PageContainer size="lg" className="dashboard-page"><p className="error-text">{error}</p></PageContainer>;
 
   const todayStr = new Date().toISOString().split('T')[0];

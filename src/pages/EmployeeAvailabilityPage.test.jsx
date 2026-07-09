@@ -39,7 +39,7 @@ describe('EmployeeAvailabilityPage', () => {
     });
     
     expect(screen.getByText(/הזנת זמינות - אזור אישי/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /שמירת זמינות/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /שמור זמינות/i })).toBeInTheDocument();
   });
 
   it('shows alert if trying to submit without date', async () => {
@@ -49,7 +49,7 @@ describe('EmployeeAvailabilityPage', () => {
     
     // Initially the button is disabled if no date is selected.
     // Let's force it or check if it's disabled.
-    const submitBtn = screen.getByRole('button', { name: /שמירת זמינות/i });
+    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
     expect(submitBtn).toBeDisabled();
   });
 
@@ -61,7 +61,7 @@ describe('EmployeeAvailabilityPage', () => {
     const dateInput = screen.getByLabelText(/תאריך/i);
     fireEvent.change(dateInput, { target: { value: '2023-11-01' } });
     
-    const submitBtn = screen.getByRole('button', { name: /שמירת זמינות/i });
+    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
     expect(submitBtn).not.toBeDisabled();
     
     await act(async () => {
@@ -89,7 +89,7 @@ describe('EmployeeAvailabilityPage', () => {
     const dateInput = screen.getByLabelText(/תאריך/i);
     fireEvent.change(dateInput, { target: { value: '2023-11-01' } });
     
-    const submitBtn = screen.getByRole('button', { name: /שמירת זמינות/i });
+    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
     
     await act(async () => {
       fireEvent.submit(submitBtn.closest('form'));
@@ -109,7 +109,7 @@ describe('EmployeeAvailabilityPage', () => {
     const dateInput = screen.getByLabelText(/תאריך/i);
     fireEvent.change(dateInput, { target: { value: '2023-11-01' } });
     
-    const submitBtn = screen.getByRole('button', { name: /שמירת זמינות/i });
+    const submitBtn = screen.getByRole('button', { name: /שמור זמינות/i });
     
     await act(async () => {
       fireEvent.submit(submitBtn.closest('form'));

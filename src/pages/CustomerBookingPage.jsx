@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Check, Clock, Calendar as CalendarIcon, User, Scissors } from 'lucide-react';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './CustomerBookingPage.css';
 
 const CustomerBookingPage = () => {
@@ -175,12 +176,13 @@ const CustomerBookingPage = () => {
           <section className="form-section">
             <h2><Scissors size={20}/> בחירת שירותים</h2>
             
-            {loading && <div className="loading-state">טוען שירותים...</div>}
+            {loading && <LoadingSpinner text="טוען שירותים..." />}
             {error && <div className="error-state">{error}</div>}
+            
             {!loading && !error && serviceTypes.length === 0 && (
               <EmptyState text="לא נמצאו שירותים זמינים כרגע." />
             )}
-            
+
             {!loading && !error && serviceTypes.length > 0 && (
               <div className="services-grid">
                 {serviceTypes.map(service => (

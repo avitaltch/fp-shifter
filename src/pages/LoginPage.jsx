@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { KeyRound, User } from 'lucide-react';
 import PageContainer from '../components/PageContainer/PageContainer';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './LoginPage.css';
 
 const LoginPage = () => {
@@ -99,7 +100,7 @@ const LoginPage = () => {
           </div>
 
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? 'טוען...' : (isSignUp ? 'הרשמה' : 'התחברות')}
+            {loading ? <LoadingSpinner text="טוען..." inline={true} /> : (isSignUp ? 'הרשמה' : 'התחברות')}
           </button>
         </form>
 

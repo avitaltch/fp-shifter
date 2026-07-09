@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import { Star, Clock, Calendar as CalendarIcon, UserPlus } from 'lucide-react';
 import './RecommendationsPage.css';
 
@@ -100,7 +101,7 @@ const RecommendationsPage = () => {
         <p>משמרות פנויות שממתינות לשיבוץ. קח יוזמה ושבץ את עצמך!</p>
       </header>
 
-      {loading && <p>טוען המלצות...</p>}
+      {loading && <LoadingSpinner text="טוען המלצות..." />}
       {error && <p className="error-text">{error}</p>}
       
       {!loading && !error && recommendations.length === 0 && (

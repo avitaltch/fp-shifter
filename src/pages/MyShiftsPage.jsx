@@ -3,6 +3,7 @@ import { Clock, User, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './MyShiftsPage.css';
 
 const MyShiftsPage = () => {
@@ -79,7 +80,7 @@ const MyShiftsPage = () => {
         </header>
 
         <div className="tasks-list">
-          {loading && <p>טוען משמרות...</p>}
+          {loading && <LoadingSpinner text="טוען משמרות..." />}
           {error && <p className="error-text">{error}</p>}
           {!loading && !error && tasks.length === 0 ? (
             <EmptyState text="אין טיפולים שנקבעו להיום. איזה כיף!" />

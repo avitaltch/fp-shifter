@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Calendar, Clock, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import PageContainer from '../components/PageContainer/PageContainer';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './EmployeeAvailabilityPage.css';
 
 const EmployeeAvailabilityPage = () => {
@@ -93,7 +94,12 @@ const EmployeeAvailabilityPage = () => {
           </div>
 
           <button type="submit" className="submit-btn" disabled={isSubmitting || !selectedDate}>
-            {isSubmitting ? 'שומר...' : 'שמירת זמינות'}
+            {isSubmitting ? <LoadingSpinner text="מעדכן..." inline={true} /> : (
+              <>
+                <CheckCircle size={18} />
+                שמור זמינות
+              </>
+            )}
           </button>
         </form>
     </PageContainer>

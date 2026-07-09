@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
+import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import { Settings, Plus, Trash2, Edit2, Check, X } from 'lucide-react';
 import './ServiceManagementPage.css';
 
@@ -162,7 +163,7 @@ const ServiceManagementPage = () => {
         </div>
       )}
 
-      {loading && <p>טוען שירותים...</p>}
+      {loading && <LoadingSpinner text="טוען שירותים..." />}
       {error && <p className="error-text">{error}</p>}
       
       {!loading && !error && services.length === 0 && !isAdding && (
