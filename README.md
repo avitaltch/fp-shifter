@@ -78,4 +78,4 @@ supabase/
 | `npm run lint` | Oxlint |
 | `npm run build` | Production build |
 
-CI (GitHub Actions) runs lint, unit tests, and the production build on every push/PR.
+CI (GitHub Actions) runs lint, unit tests, the production build, and Playwright e2e on every push/PR.
