@@ -1,118 +1,117 @@
-import { useState, useEffect } from 'react';
-import { Clock, User, CheckCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { useState, useEffect, useCallback } from 'react';
+import { Clock, User, CheckCircle, Calendar as CalendarIcon } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { listMyShifts, updateShiftStatus } from '../lib/api';
+import { friendlyError } from '../lib/errors';
+import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './MyShiftsPage.css';
 
+// Scheduled -> In_Progress -> Done. Done is terminal (no accidental reset).
+const NEXT_STATUS = { Scheduled: 'In_Progress', In_Progress: 'Done' };
+
 const MyShiftsPage = () => {
-  const [session, setSession] = useState(null);
+  const { session, profile } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-  }, []);
-
-  useEffect(() => {
+  const fetchTasks = useCallback(async () => {
     if (!session) return;
-
-    const fetchTasks = async () => {
-      try {
-        setLoading(true);
-        const today = new Date().toISOString().split('T')[0];
-        
-        const { data, error } = await supabase
-          .from('appointment_items')
-          .select(`
-            id, start_time, end_time, status,
-            appointments!inner ( id, visit_date, customers ( first_name, last_name ) ),
-            service_types ( name )
-          `)
-          .eq('user_id', session.user.id)
-          .eq('appointments.visit_date', today)
-          .order('start_time', { ascending: true });
-
-        if (error) throw error;
-        setTasks(data || []);
-      } catch (err) {
-        console.error(err);
-        setError("שגיאה בטעינת משמרות. יש לרענן.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTasks();
+    try {
+      setLoading(true);
+      setError(null);
+      setTasks(await listMyShifts(session.user.id, todayString()));
+    } catch (err) {
+      console.error(err);
+      setError('שגיאה בטעינת משמרות. יש לרענן.');
+    } finally {
+      setLoading(false);
+    }
   }, [session]);
 
-  const toggleStatus = async (taskId, currentStatus) => {
-    const nextStatus = currentStatus === 'Scheduled' ? 'In_Progress' : currentStatus === 'In_Progress' ? 'Done' : 'Scheduled';
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  const advanceStatus = async (task) => {
+    const nextStatus = NEXT_STATUS[task.status];
+    if (!nextStatus) return;
+    setActionError(null);
     try {
-      const { error } = await supabase
-        .from('appointment_items')
-        .update({ status: nextStatus })
-        .eq('id', taskId);
-        
-      if (error) throw error;
-      
-      // Update local state
-      setTasks(tasks.map(t => t.id === taskId ? { ...t, status: nextStatus } : t));
+      await updateShiftStatus(task.id, session.user.id, nextStatus);
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t)));
     } catch (err) {
-      alert("שגיאה בעדכון הסטטוס");
+      console.error(err);
+      setActionError(friendlyError(err, 'שגיאה בעדכון הסטטוס.'));
     }
   };
 
-  if (!session) {
-    return <PageContainer size="md" className="my-shifts-page"><p>יש להתחבר כדי לצפות במשמרות</p></PageContainer>;
-  }
+  const displayName = profile ? `${profile.first_name} ${profile.last_name}` : '';
+
+  // Group by work date so upcoming days are visible, not just today
+  const byDate = tasks.reduce((acc, task) => {
+    (acc[task.work_date] = acc[task.work_date] || []).push(task);
+    return acc;
+  }, {});
 
   return (
     <PageContainer size="md" className="my-shifts-page">
       <header className="page-header">
-          <User size={32} className="header-icon" />
-          <h1>המשמרות שלי - {session.user.user_metadata?.full_name}</h1>
-          <p>הטיפולים ששובצת אליהם להיום ({new Date().toLocaleDateString('he-IL')})</p>
-        </header>
+        <User size={32} className="header-icon" />
+        <h1>המשמרות שלי{displayName ? ` - ${displayName}` : ''}</h1>
+        <p>הטיפולים ששובצת אליהם מהיום והלאה</p>
+      </header>
 
-        <div className="tasks-list">
-          {loading && <LoadingSpinner text="טוען משמרות..." />}
-          {error && <p className="error-text">{error}</p>}
-          {!loading && !error && tasks.length === 0 ? (
-            <EmptyState text="אין טיפולים שנקבעו להיום. איזה כיף!" />
-          ) : (
-            tasks.map(task => {
-              const customerName = task.appointments?.customers 
-                ? `${task.appointments.customers.first_name} ${task.appointments.customers.last_name}` 
-                : 'לקוח לא ידוע';
-                
-              return (
-                <div key={task.id} className="task-card">
-                  <div className="task-time">
-                    <Clock size={16} />
-                    <span>{task.start_time.substring(0, 5)} - {task.end_time.substring(0, 5)}</span>
+      <div className="tasks-list">
+        {loading && <LoadingSpinner text="טוען משמרות..." />}
+        {error && <p className="error-text">{error}</p>}
+        {actionError && <p className="error-text">{actionError}</p>}
+        {!loading && !error && tasks.length === 0 ? (
+          <EmptyState text="אין טיפולים מתוכננים. איזה כיף!" />
+        ) : (
+          Object.entries(byDate).map(([date, dateTasks]) => (
+            <section key={date} className="date-group">
+              <h2 className="date-heading">
+                <CalendarIcon size={18} /> {formatHebrewDate(date)}
+              </h2>
+              {dateTasks.map((task) => {
+                const customer = task.appointments?.customers;
+                const customerName = customer
+                  ? `${customer.first_name} ${customer.last_name}`
+                  : 'לקוח לא ידוע';
+
+                return (
+                  <div key={task.id} className="task-card">
+                    <div className="task-time">
+                      <Clock size={16} />
+                      <span>{toTimeDisplay(task.start_time)} - {toTimeDisplay(task.end_time)}</span>
+                    </div>
+                    <div className="task-details">
+                      <h3>{task.service_types?.name}</h3>
+                      <p>לקוח/ה: <strong>{customerName}</strong></p>
+                      <button
+                        className={`status-btn ${task.status.toLowerCase()}`}
+                        onClick={() => advanceStatus(task)}
+                        disabled={task.status === 'Done'}
+                      >
+                        {task.status === 'Scheduled' && 'מתוכנן - לחץ להתחלה'}
+                        {task.status === 'In_Progress' && 'בביצוע - לחץ לסיום'}
+                        {task.status === 'Done' && (
+                          <><CheckCircle size={14} style={{ marginLeft: '4px' }} /> הסתיים</>
+                        )}
+                      </button>
+                    </div>
                   </div>
-                  <div className="task-details">
-                    <h3>{task.service_types?.name}</h3>
-                    <p>לקוח/ה: <strong>{customerName}</strong></p>
-                    <button 
-                      className={`status-btn ${task.status.toLowerCase()}`}
-                      onClick={() => toggleStatus(task.id, task.status)}
-                    >
-                      {task.status === 'Scheduled' && 'מתוכנן - לחץ להתחלה'}
-                      {task.status === 'In_Progress' && 'בביצוע - לחץ לסיום'}
-                      {task.status === 'Done' && <><CheckCircle size={14} style={{marginLeft: '4px'}}/> הסתיים</>}
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
+                );
+              })}
+            </section>
+          ))
+        )}
+      </div>
     </PageContainer>
   );
 };

@@ -1,28 +1,12 @@
-import { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import PageContainer from '../PageContainer/PageContainer';
 
+// UI-level gate only — real enforcement is the RLS in supabase/rls.sql.
+// The role comes from public.users via AuthContext, not user_metadata.
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { session, role, loading } = useAuth();
   const location = useLocation();
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   if (loading) {
     return (
@@ -36,10 +20,7 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  const userRole = session.user.user_metadata?.role;
-
-  if (allowedRoles && !allowedRoles.includes(userRole)) {
-    // If the user doesn't have the right role, redirect them to the home page
+  if (allowedRoles && !allowedRoles.includes(role)) {
     return <Navigate to="/" replace />;
   }
 

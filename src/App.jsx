@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
 import Footer from './components/Footer/Footer';
 import LandingPage from './pages/LandingPage';
@@ -11,7 +11,9 @@ import EmployeeAvailabilityPage from './pages/EmployeeAvailabilityPage';
 import MyShiftsPage from './pages/MyShiftsPage';
 import AboutPage from './pages/AboutPage';
 import ServiceManagementPage from './pages/ServiceManagementPage';
+import TeamPage from './pages/TeamPage';
 import RecommendationsPage from './pages/RecommendationsPage';
+import NotFoundPage from './pages/NotFoundPage';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
 
 function App() {
@@ -23,20 +25,33 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/book/:businessId" element={<CustomerBookingPage />} />
-          <Route path="/book/:businessId/success" element={<BookingSuccessPage />} />
-          
+          <Route path="/book" element={<CustomerBookingPage />} />
+          <Route path="/book/success" element={<BookingSuccessPage />} />
+          {/* Legacy multi-tenant-style links keep working */}
+          <Route path="/book/:businessId" element={<Navigate to="/book" replace />} />
+          <Route path="/book/:businessId/success" element={<Navigate to="/book/success" replace />} />
+
           <Route path="/admin/dashboard" element={
             <ProtectedRoute allowedRoles={['Admin']}>
               <ManagerDashboardPage />
             </ProtectedRoute>
           } />
-          <Route path="/admin/assign/:shiftId?" element={
+          <Route path="/admin/assign" element={
             <ProtectedRoute allowedRoles={['Admin']}>
               <ShiftAssignmentPage />
             </ProtectedRoute>
           } />
-          
+          <Route path="/admin/services" element={
+            <ProtectedRoute allowedRoles={['Admin']}>
+              <ServiceManagementPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/admin/team" element={
+            <ProtectedRoute allowedRoles={['Admin']}>
+              <TeamPage />
+            </ProtectedRoute>
+          } />
+
           <Route path="/employee/availability" element={
             <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
               <EmployeeAvailabilityPage />
@@ -52,12 +67,8 @@ function App() {
               <RecommendationsPage />
             </ProtectedRoute>
           } />
-          
-          <Route path="/admin/services" element={
-            <ProtectedRoute allowedRoles={['Admin']}>
-              <ServiceManagementPage />
-            </ProtectedRoute>
-          } />
+
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>
       <Footer />
