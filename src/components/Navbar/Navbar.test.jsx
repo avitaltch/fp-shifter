@@ -88,12 +88,14 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: /המשמרות שלי/ })).toBeInTheDocument();
   });
 
-  it('keeps a horizontal nav for Admin on a wide viewport', () => {
+  it('keeps a horizontal nav for Admin on a wide viewport, grouped with separators', () => {
     authAs('Admin');
     const { container } = renderNavbar();
 
     expect(container.querySelector('.navbar')).not.toHaveClass('navbar--drawer');
     expect(screen.queryByRole('button', { name: /פתח תפריט/ })).not.toBeInTheDocument();
+    // Admin group + staff group are visually separated
+    expect(container.querySelectorAll('.nav-divider')).toHaveLength(2);
   });
 
   it('keeps a horizontal nav for Employee on a wide viewport', () => {

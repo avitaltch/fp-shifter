@@ -4,7 +4,21 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import './Navbar.css';
 
-const DRAWER_MQ = '(max-width: 1100px)';
+// Real mobile only — desktop always shows the full organized nav.
+const DRAWER_MQ = '(max-width: 900px)';
+
+const ADMIN_LINKS = [
+  { to: '/admin/dashboard', icon: LayoutDashboard, label: 'לוח בקרה' },
+  { to: '/admin/assign', icon: Users, label: 'שיבוץ משמרות' },
+  { to: '/admin/services', icon: Star, label: 'ניהול שירותים' },
+  { to: '/admin/team', icon: Briefcase, label: 'ניהול צוות' },
+];
+
+const STAFF_LINKS = [
+  { to: '/employee/shifts', icon: Clock, label: 'המשמרות שלי' },
+  { to: '/employee/availability', icon: CheckCircle, label: 'הזנת זמינות' },
+  { to: '/employee/recommendations', icon: Star, label: 'משמרות פתוחות' },
+];
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -21,11 +35,10 @@ const Navbar = () => {
     navigate('/login');
   };
 
-  const isActive = (path) => location.pathname === path ? 'active' : '';
+  const isActive = (path) => (location.pathname === path ? 'active' : '');
   const closeMenu = () => setIsOpen(false);
 
   const isStaff = role === 'Employee' || role === 'Admin';
-  // Burger/drawer only on narrow viewports — never force it for Admin on desktop.
   const useDrawer = isNarrow;
 
   useEffect(() => {
@@ -51,6 +64,15 @@ const Navbar = () => {
       document.body.style.overflow = '';
     };
   }, [isOpen]);
+
+  const renderLink = ({ to, icon: Icon, label }) => (
+    <li key={to} className="nav-item">
+      <Link to={to} className={`nav-links ${isActive(to)}`} onClick={closeMenu}>
+        <Icon size={18} />
+        {label}
+      </Link>
+    </li>
+  );
 
   return (
     <nav className={`navbar${useDrawer ? ' navbar--drawer' : ''}`}>
@@ -83,75 +105,36 @@ const Navbar = () => {
         )}
 
         <ul id="primary-nav" className={isOpen ? 'nav-menu active' : 'nav-menu'}>
-          {/* Customer View */}
-          <li className="nav-item">
-            <Link to="/book" className={`nav-links ${isActive('/book')}`} onClick={closeMenu}>
-              <Calendar size={18} />
-              הזמנת תור
-            </Link>
-          </li>
-
-          {/* Admin View */}
+          {/* Management group */}
           {role === 'Admin' && (
             <>
-              <li className="nav-item">
-                <Link to="/admin/dashboard" className={`nav-links ${isActive('/admin/dashboard')}`} onClick={closeMenu}>
-                  <LayoutDashboard size={18} />
-                  לוח בקרה
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/admin/assign" className={`nav-links ${isActive('/admin/assign')}`} onClick={closeMenu}>
-                  <Users size={18} />
-                  שיבוץ משמרות
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/admin/services" className={`nav-links ${isActive('/admin/services')}`} onClick={closeMenu}>
-                  <Star size={18} />
-                  ניהול שירותים
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/admin/team" className={`nav-links ${isActive('/admin/team')}`} onClick={closeMenu}>
-                  <Briefcase size={18} />
-                  ניהול צוות
-                </Link>
-              </li>
+              <li className="nav-group-label" aria-hidden="true">ניהול</li>
+              {ADMIN_LINKS.map(renderLink)}
+              <li className="nav-divider" role="separator" aria-orientation="vertical" />
             </>
           )}
 
-          {/* Employee View — staff only */}
+          {/* Work group — all staff */}
           {isStaff && (
             <>
-              <li className="nav-item">
-                <Link to="/employee/shifts" className={`nav-links ${isActive('/employee/shifts')}`} onClick={closeMenu}>
-                  <Clock size={18} />
-                  המשמרות שלי
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/employee/availability" className={`nav-links ${isActive('/employee/availability')}`} onClick={closeMenu}>
-                  <CheckCircle size={18} />
-                  הזנת זמינות
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/employee/recommendations" className={`nav-links ${isActive('/employee/recommendations')}`} onClick={closeMenu}>
-                  <Star size={18} />
-                  משמרות פתוחות
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/employee/profile" className={`nav-links ${isActive('/employee/profile')}`} onClick={closeMenu}>
-                  <UserRound size={18} />
-                  הפרופיל שלי
-                </Link>
-              </li>
+              <li className="nav-group-label" aria-hidden="true">עבודה</li>
+              {STAFF_LINKS.map(renderLink)}
+              <li className="nav-divider" role="separator" aria-orientation="vertical" />
             </>
           )}
 
-          {/* Auth Actions */}
+          {/* Customer booking */}
+          {renderLink({ to: '/book', icon: Calendar, label: 'הזמנת תור' })}
+
+          {/* Personal area: profile + auth */}
+          {isStaff && (
+            <li className="nav-item">
+              <Link to="/employee/profile" className={`nav-links ${isActive('/employee/profile')}`} onClick={closeMenu}>
+                <UserRound size={18} />
+                הפרופיל שלי
+              </Link>
+            </li>
+          )}
           <li className="nav-item auth-item">
             {session ? (
               <button type="button" onClick={handleLogout} className="nav-links logout-btn">

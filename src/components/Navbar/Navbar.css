@@ -81,6 +81,19 @@
   background-color: var(--secondary);
 }
 
+/* Group organization: vertical dividers on desktop, section labels in drawer */
+.nav-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-light);
+  margin: 0 0.5rem;
+  flex-shrink: 0;
+}
+
+.nav-group-label {
+  display: none;
+}
+
 .menu-icon {
   display: none;
   color: var(--text-primary);
@@ -105,8 +118,8 @@
 }
 
 /*
- * Drawer mode: toggled via .navbar--drawer when viewport ≤1100px.
- * Wide screens always use the horizontal top nav (including Admin).
+ * Drawer mode: toggled via .navbar--drawer when viewport ≤900px (real mobile).
+ * Wide screens always use the full horizontal nav, organized into groups.
  */
 .navbar--drawer .navbar-container {
   padding: 0 1rem;
@@ -174,4 +187,22 @@
   justify-content: flex-start;
   border-radius: 0;
   white-space: normal;
+}
+
+/* In the drawer, dividers become spacing and group labels become headers */
+.navbar--drawer .nav-divider {
+  width: 100%;
+  height: 0;
+  margin: 0.35rem 0;
+  background: none;
+}
+
+.navbar--drawer .nav-group-label {
+  display: block;
+  padding: 0.6rem 1.25rem 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
