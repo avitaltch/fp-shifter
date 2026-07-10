@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, Menu, X, LogOut, LogIn, Users, Star, Briefcase } from 'lucide-react';
+import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, Menu, X, LogOut, LogIn, Users, Star, Briefcase, UserRound } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import './Navbar.css';
@@ -119,6 +119,12 @@ const Navbar = () => {
                 <Link to="/employee/recommendations" className={`nav-links ${isActive('/employee/recommendations')}`} onClick={closeMenu}>
                   <Star size={18} />
                   משמרות פתוחות
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/employee/profile" className={`nav-links ${isActive('/employee/profile')}`} onClick={closeMenu}>
+                  <UserRound size={18} />
+                  הפרופיל שלי
                 </Link>
               </li>
             </>

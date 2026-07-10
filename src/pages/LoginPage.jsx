@@ -12,13 +12,18 @@ import './LoginPage.css';
 // Invite / recovery email links land on /login with tokens in the URL.
 // Supabase establishes a session; we must then collect a password via
 // updateUser — otherwise the user has an account but nothing to type at login.
-function authLinkTypeFromUrl() {
-  const hash = window.location.hash?.startsWith('#')
+const RECOVERY_FLAG = 'fp_password_recovery';
+
+function authParamsFromUrl() {
+  const search = new URLSearchParams(window.location.search);
+  const hashRaw = window.location.hash?.startsWith('#')
     ? window.location.hash.slice(1)
     : window.location.hash || '';
-  const fromHash = new URLSearchParams(hash).get('type');
-  if (fromHash) return fromHash;
-  return new URLSearchParams(window.location.search).get('type');
+  const hash = new URLSearchParams(hashRaw);
+  const type = hash.get('type') || search.get('type');
+  const hasCode = Boolean(search.get('code'));
+  const hasToken = Boolean(hash.get('access_token') || hash.get('refresh_token'));
+  return { type, hasCode, hasToken, isCallback: Boolean(type || hasCode || hasToken) };
 }
 
 function clearAuthParamsFromUrl() {
@@ -26,6 +31,30 @@ function clearAuthParamsFromUrl() {
   url.hash = '';
   ['code', 'type', 'error', 'error_description'].forEach((key) => url.searchParams.delete(key));
   window.history.replaceState({}, document.title, `${url.pathname}${url.search}`);
+}
+
+function clearRecoveryFlag() {
+  try {
+    sessionStorage.removeItem(RECOVERY_FLAG);
+  } catch {
+    /* ignore */
+  }
+}
+
+function markRecoveryPending() {
+  try {
+    sessionStorage.setItem(RECOVERY_FLAG, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function isRecoveryPending() {
+  try {
+    return sessionStorage.getItem(RECOVERY_FLAG) === '1';
+  } catch {
+    return false;
+  }
 }
 
 async function navigateAfterAuth(navigate, location, userId) {
@@ -69,36 +98,59 @@ const LoginPage = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let enteredSetPassword = false;
 
     const enterSetPassword = async (message, session) => {
-      if (cancelled) return;
+      if (cancelled || enteredSetPassword) return;
+      enteredSetPassword = true;
       setMode('setPassword');
       setError(null);
       setInfo(message);
       clearAuthParamsFromUrl();
+      clearRecoveryFlag();
       if (session?.user?.id) {
         await loadNameDraft(session.user.id, setFirstName, setLastName);
       }
+      if (!cancelled) setBootstrapping(false);
     };
 
-    const linkType = authLinkTypeFromUrl();
+    const { type, isCallback } = authParamsFromUrl();
+    const recoveryIntent = type === 'recovery' || isRecoveryPending();
+    const inviteIntent = type === 'invite' || type === 'signup';
+
+    const recoveryMessage = 'בחרו סיסמה חדשה לחשבון.';
+    const inviteMessage = 'ההזמנה אושרה. השלימו שם וסיסמה כדי להיכנס.';
+    const callbackMessage = recoveryIntent ? recoveryMessage : inviteMessage;
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
-        enterSetPassword('בחרו סיסמה חדשה לחשבון.', session);
-      } else if (event === 'SIGNED_IN' && (linkType === 'invite' || linkType === 'signup')) {
-        enterSetPassword('ההזמנה אושרה. השלימו שם וסיסמה כדי להיכנס.', session);
+        enterSetPassword(recoveryMessage, session);
+        return;
+      }
+      // PKCE recovery/invite often arrives as SIGNED_IN with ?code= and no type=
+      if (
+        session &&
+        (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
+        (isCallback || recoveryIntent || inviteIntent)
+      ) {
+        enterSetPassword(callbackMessage, session);
       }
     });
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (cancelled) return;
-      if (linkType === 'invite' || linkType === 'signup') {
-        await enterSetPassword('ההזמנה אושרה. השלימו שם וסיסמה כדי להיכנס.', session);
-      } else if (linkType === 'recovery') {
-        await enterSetPassword('בחרו סיסמה חדשה לחשבון.', session);
+      if (session && (inviteIntent || recoveryIntent || isCallback)) {
+        await enterSetPassword(callbackMessage, session);
+        return;
+      }
+      // Code exchange may still be in flight — keep spinner briefly for callbacks
+      if (isCallback && !session) {
+        window.setTimeout(() => {
+          if (!cancelled && !enteredSetPassword) setBootstrapping(false);
+        }, 2500);
+        return;
       }
       setBootstrapping(false);
     });
@@ -136,12 +188,14 @@ const LoginPage = () => {
     setInfo(null);
 
     try {
+      markRecoveryPending();
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/login`,
       });
       if (resetError) throw resetError;
       setInfo('אם קיים חשבון עם כתובת זו, נשלח אליה קישור לאיפוס סיסמה.');
     } catch (err) {
+      clearRecoveryFlag();
       setError(friendlyError(err, 'שגיאה בשליחת קישור האיפוס.'));
     } finally {
       setLoading(false);

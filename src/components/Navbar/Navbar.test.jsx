@@ -58,6 +58,7 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: /המשמרות שלי/ })).toHaveAttribute('href', '/employee/shifts');
     expect(screen.getByRole('link', { name: /הזנת זמינות/ })).toHaveAttribute('href', '/employee/availability');
     expect(screen.getByRole('link', { name: /משמרות פתוחות/ })).toHaveAttribute('href', '/employee/recommendations');
+    expect(screen.getByRole('link', { name: /הפרופיל שלי/ })).toHaveAttribute('href', '/employee/profile');
 
     expect(screen.queryByText('לוח בקרה')).not.toBeInTheDocument();
     expect(screen.queryByText('שיבוץ משמרות')).not.toBeInTheDocument();

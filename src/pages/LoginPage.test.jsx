@@ -63,6 +63,7 @@ describe('LoginPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     mockUseLocation.mockReturnValue({ pathname: '/login', state: null });
     window.history.replaceState({}, '', '/login');
     authChangeCb = null;
@@ -79,6 +80,7 @@ describe('LoginPage', () => {
 
   afterEach(() => {
     window.history.replaceState({}, '', '/');
+    sessionStorage.clear();
   });
 
   it('renders a login-only form (no sign-up UI)', async () => {
@@ -332,5 +334,51 @@ describe('LoginPage', () => {
 
     expect(await screen.findByText('נא להזין שם פרטי ושם משפחה.')).toBeInTheDocument();
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('opens set-password mode from a PKCE recovery code when flagged', async () => {
+    window.history.replaceState({}, '', '/login?code=pkce-code');
+    sessionStorage.setItem('fp_password_recovery', '1');
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    mockProfileFetch({ first_name: 'דנה', last_name: 'לוי', role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+
+    expect(await screen.findByRole('heading', { name: 'השלמת הרשמה' })).toBeInTheDocument();
+    expect(screen.getByText(/בחרו סיסמה חדשה/)).toBeInTheDocument();
+    expect(sessionStorage.getItem('fp_password_recovery')).toBeNull();
+  });
+
+  it('opens set-password when SIGNED_IN fires after a recovery code callback', async () => {
+    window.history.replaceState({}, '', '/login?code=pkce-code');
+    sessionStorage.setItem('fp_password_recovery', '1');
+    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
+    mockProfileFetch({ first_name: 'דנה', last_name: 'לוי', role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+
+    authChangeCb('SIGNED_IN', { user: { id: 'user-1' } });
+
+    expect(await screen.findByRole('heading', { name: 'השלמת הרשמה' })).toBeInTheDocument();
+    expect(screen.getByText(/בחרו סיסמה חדשה/)).toBeInTheDocument();
+  });
+
+  it('marks recovery pending when sending a reset email', async () => {
+    supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+    fireEvent.click(screen.getByRole('button', { name: 'שכחתי סיסמה' }));
+    fireEvent.change(screen.getByLabelText('אימייל'), {
+      target: { value: 'staff@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'שלח קישור לאיפוס' }));
+
+    await waitFor(() => {
+      expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalled();
+    });
+    expect(sessionStorage.getItem('fp_password_recovery')).toBe('1');
   });
 });

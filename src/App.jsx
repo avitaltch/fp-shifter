@@ -13,6 +13,7 @@ import AboutPage from './pages/AboutPage';
 import ServiceManagementPage from './pages/ServiceManagementPage';
 import TeamPage from './pages/TeamPage';
 import RecommendationsPage from './pages/RecommendationsPage';
+import EmployeeProfilePage from './pages/EmployeeProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
 
@@ -65,6 +66,11 @@ function App() {
           <Route path="/employee/recommendations" element={
             <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
               <RecommendationsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/employee/profile" element={
+            <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
+              <EmployeeProfilePage />
             </ProtectedRoute>
           } />
 

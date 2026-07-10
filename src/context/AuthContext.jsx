@@ -33,7 +33,7 @@ export function AuthProvider({ children }) {
     }
     const { data, error } = await supabase
       .from('users')
-      .select('id, first_name, last_name, role')
+      .select('id, first_name, last_name, role, phone')
       .eq('id', currentSession.user.id)
       .single();
     if (!isCancelled()) {
