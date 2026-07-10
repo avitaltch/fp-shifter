@@ -71,14 +71,19 @@ No Google OAuth and no third-party AI API in the product runtime — AI was used
 
 ```mermaid
 erDiagram
-  auth_users ||--|| users : "id"
-  customers ||--o{ appointments : "customer_id"
-  appointments ||--|{ appointment_items : "appointment_id"
-  service_types ||--o{ appointment_items : "service_type_id"
-  users ||--o{ appointment_items : "user_id (nullable)"
-  users ||--o{ employee_skills : "user_id"
-  service_types ||--o{ employee_skills : "service_type_id"
-  users ||--o{ availabilities : "user_id"
+  auth_users ||--|| users : has_profile
+  customers ||--o{ appointments : books
+  appointments ||--|{ appointment_items : contains
+  service_types ||--o{ appointment_items : of_type
+  users ||--o{ appointment_items : assigned_to
+  users ||--o{ employee_skills : has_skill
+  service_types ||--o{ employee_skills : requires
+  users ||--o{ availabilities : publishes
+
+  auth_users {
+    uuid id PK
+    text email
+  }
 
   customers {
     uuid id PK
@@ -92,7 +97,7 @@ erDiagram
   }
 
   users {
-    uuid id PK_FK
+    uuid id PK
     text first_name
     text last_name
     text role
@@ -148,7 +153,7 @@ erDiagram
 
 **Design notes**
 
-- `users` extends `auth.users` (1:1); role is `Admin` | `Employee` and is RLS-protected.
+- `users.id` is also an FK to `auth.users` (1:1); role is `Admin` | `Employee` and is RLS-protected.
 - Booking creates `appointments` + `appointment_items`; items may be unassigned (`user_id` null) for the open-shift pool.
 - Overlapping assignments for the same employee are blocked by a GiST **exclusion constraint**.
 - Soft deletes (`deleted_at`) keep history while hiding inactive rows from day-to-day lists.
