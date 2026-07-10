@@ -18,6 +18,7 @@ const MESSAGES = {
   USER_NOT_FOUND: 'המשתמש לא נמצא במערכת.',
   CANNOT_CHANGE_OWN_ROLE: 'לא ניתן לשנות את התפקיד של עצמך.',
   FORBIDDEN_COLUMNS: 'אין הרשאה לעדכן שדות אלו.',
+  ACCOUNT_DISABLED: 'החשבון הושבת. פנו למנהל.',
   FORBIDDEN: 'אין לך הרשאה לבצע פעולה זו.',
   'Invalid login credentials': 'אימייל או סיסמה שגויים.',
 };

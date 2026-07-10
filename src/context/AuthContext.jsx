@@ -9,6 +9,7 @@ const AuthContext = createContext({
   role: null,
   loading: true,
   profileError: false,
+  accountDisabled: false,
   retryProfile: () => {},
   signOut: () => {},
 });
@@ -18,6 +19,7 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
+  const [accountDisabled, setAccountDisabled] = useState(false);
 
   // A failed profile fetch must be distinguishable from "not logged in":
   // otherwise a network/RLS hiccup silently bounces the user off protected
@@ -33,14 +35,23 @@ export function AuthProvider({ children }) {
     }
     const { data, error } = await supabase
       .from('users')
-      .select('id, first_name, last_name, role, phone')
+      .select('id, first_name, last_name, role, phone, deleted_at')
       .eq('id', currentSession.user.id)
       .single();
-    if (!isCancelled()) {
-      setProfile(error ? null : data);
-      setProfileError(Boolean(error));
+    if (isCancelled()) return;
+    // Soft-deleted (deactivated) staff must not keep a usable session.
+    if (!error && data?.deleted_at) {
+      setProfile(null);
+      setProfileError(false);
+      setAccountDisabled(true);
       setLoading(false);
+      supabase.auth.signOut();
+      return;
     }
+    setProfile(error ? null : data);
+    setProfileError(Boolean(error));
+    if (!error) setAccountDisabled(false);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -73,7 +84,8 @@ export function AuthProvider({ children }) {
   }, [loadProfile, session]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   };
 
   const value = {
@@ -82,6 +94,7 @@ export function AuthProvider({ children }) {
     role: profile?.role ?? null,
     loading,
     profileError,
+    accountDisabled,
     retryProfile,
     signOut,
   };

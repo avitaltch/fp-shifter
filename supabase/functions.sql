@@ -259,6 +259,15 @@ begin
     raise exception 'FORBIDDEN';
   end if;
 
+  -- Deactivated (soft-deleted) staff must not claim shifts even if they
+  -- still hold a live JWT.
+  if not exists (
+    select 1 from users u
+    where u.id = v_uid and u.deleted_at is null
+  ) then
+    raise exception 'ACCOUNT_DISABLED';
+  end if;
+
   select ai.* into v_item
   from appointment_items ai
   join appointments ap on ap.id = ai.appointment_id

@@ -13,15 +13,18 @@ const authState = ({
   session = null,
   loading = false,
   profileError = false,
+  accountDisabled = false,
   retryProfile = vi.fn(),
+  signOut = vi.fn().mockResolvedValue(undefined),
 } = {}) => ({
   session,
   profile: role ? { first_name: 'דנה', last_name: 'לוי', role } : null,
   role,
   loading,
   profileError,
+  accountDisabled,
   retryProfile,
-  signOut: vi.fn(),
+  signOut,
 });
 
 const renderProtected = (allowedRoles) =>
@@ -116,5 +119,33 @@ describe('ProtectedRoute', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'נסה שוב' }));
     expect(retryProfile).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers a sign-out escape hatch next to retry when the profile fetch failed', () => {
+    const signOut = vi.fn().mockResolvedValue(undefined);
+    useAuth.mockReturnValue(
+      authState({
+        session: { user: { id: 'user-1' } },
+        profileError: true,
+        signOut,
+      })
+    );
+    renderProtected(['Admin']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'התנתק' }));
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the deactivated-account message instead of redirecting', () => {
+    useAuth.mockReturnValue(authState({ accountDisabled: true }));
+    renderProtected(['Admin']);
+
+    expect(screen.getByText('החשבון הושבת. פנו למנהל.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'חזרה למסך הכניסה' })).toHaveAttribute(
+      'href',
+      '/login'
+    );
+    expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
 });

@@ -135,6 +135,24 @@ describe('Navbar', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/login');
   });
 
+  it('stays in place (no navigation) when sign-out fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    signOut.mockRejectedValue(new Error('network down'));
+    authAs('Employee');
+    renderNavbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /התנתק/ }));
+
+    await waitFor(() => {
+      expect(signOut).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(consoleError).toHaveBeenCalled();
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
   it('toggles the mobile menu open and closed', () => {
     window.matchMedia = vi.fn().mockImplementation((query) => ({
       matches: true,

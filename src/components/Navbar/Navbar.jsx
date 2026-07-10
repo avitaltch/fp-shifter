@@ -31,7 +31,14 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     setIsOpen(false);
-    await signOut();
+    try {
+      await signOut();
+    } catch (err) {
+      // Sign-out failed — the session is still live, so stay in place
+      // instead of showing the login form to a logged-in user.
+      console.error('Sign out failed:', err);
+      return;
+    }
     navigate('/login');
   };
 
