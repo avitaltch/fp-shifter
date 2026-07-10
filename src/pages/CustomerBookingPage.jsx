@@ -205,6 +205,13 @@ const CustomerBookingPage = () => {
                     type="date"
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker?.();
+                      } catch {
+                        /* already open or unsupported */
+                      }
+                    }}
                     min={todayString()}
                     max={addDaysString(60)}
                   />
