@@ -2,8 +2,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CustomerBookingPage from './CustomerBookingPage';
+import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
 import { listServices, getAvailableSlots, bookAppointment } from '../lib/api';
-import { addDaysString } from '../lib/dates';
+import { jerusalemAddDaysString } from '../lib/dates';
 
 const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }));
 
@@ -35,9 +36,10 @@ const renderPage = () =>
     </MemoryRouter>
   );
 
-// A valid date for the date input (must sit within its min/max window,
-// otherwise jsdom constraint validation blocks the form submission).
-const visitDate = addDaysString(7);
+// A valid date for the date input (must sit within its Jerusalem-based
+// min/max window, otherwise jsdom constraint validation blocks the form
+// submission).
+const visitDate = jerusalemAddDaysString(7);
 
 // Picks a date + slot chip and fills personal details (service already selected).
 async function completeForm({ phone = '050-1234567' } = {}) {
@@ -55,6 +57,7 @@ async function completeForm({ phone = '050-1234567' } = {}) {
 describe('CustomerBookingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     listServices.mockResolvedValue(mockServices);
     getAvailableSlots.mockResolvedValue(mockSlots);
   });
@@ -67,6 +70,14 @@ describe('CustomerBookingPage', () => {
     expect(screen.getByText('צבע')).toBeInTheDocument();
     expect(screen.getByText('₪200')).toBeInTheDocument();
     expect(listServices).toHaveBeenCalledTimes(1);
+  });
+
+  it('links to /book/manage for existing appointments', async () => {
+    renderPage();
+
+    const manageLink = await screen.findByRole('link', { name: 'לניהול תור קיים' });
+    expect(manageLink).toHaveAttribute('href', '/book/manage');
+    expect(screen.getByText(/יש לכם תור\?/)).toBeInTheDocument();
   });
 
   it('shows an error state when services fail to load', async () => {
@@ -123,6 +134,15 @@ describe('CustomerBookingPage', () => {
     );
   });
 
+  it("bounds the date picker by the salon's Jerusalem calendar day", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText('תספורת'));
+    const dateInput = screen.getByLabelText('תאריך הביקור');
+    expect(dateInput).toHaveAttribute('min', jerusalemAddDaysString(0));
+    expect(dateInput).toHaveAttribute('max', jerusalemAddDaysString(60));
+  });
+
   it('shows a message when there are no free slots for the date', async () => {
     getAvailableSlots.mockResolvedValue([]);
     renderPage();
@@ -162,9 +182,10 @@ describe('CustomerBookingPage', () => {
 
   it('books via the api layer and navigates to /book/success with router state', async () => {
     const booking = {
-      id: 'b1',
+      appointment_id: 'b1',
       visit_date: visitDate,
       start_time: '10:00:00',
+      end_time: '10:45:00',
       total_duration: 45,
       total_price: 150,
     };
@@ -187,9 +208,19 @@ describe('CustomerBookingPage', () => {
       });
     });
 
+    const expectedConfirmation = {
+      booking,
+      serviceNames: ['תספורת'],
+      customerName: 'דנה לוי',
+      phone: '050-1234567',
+    };
     expect(mockNavigate).toHaveBeenCalledWith('/book/success', {
-      state: { booking, serviceNames: ['תספורת'] },
+      state: expectedConfirmation,
     });
+    // The confirmation also survives a refresh of the success page
+    expect(JSON.parse(sessionStorage.getItem(BOOKING_CONFIRMATION_KEY))).toEqual(
+      expectedConfirmation
+    );
   });
 
   it('shows the SLOT_TAKEN message and refreshes the slot list on a lost race', async () => {
@@ -213,8 +244,51 @@ describe('CustomerBookingPage', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
-  it('shows a friendly error when loading slots fails', async () => {
+  it('shows the SLOT_IN_PAST message, clears the selection and refreshes slots', async () => {
+    bookAppointment.mockRejectedValue(new Error('SLOT_IN_PAST'));
+
+    renderPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    await completeForm();
+    getAvailableSlots.mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'אישור הזמנה' }));
+
+    expect(
+      await screen.findByText('לא ניתן לקבוע תור בזמן שכבר עבר.')
+    ).toBeInTheDocument();
+
+    // The stale slot list is refetched so the user can pick a new time
+    await waitFor(() => {
+      expect(getAvailableSlots).toHaveBeenCalledWith(visitDate, ['s1']);
+    });
+    expect(screen.getByRole('button', { name: '10:00' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
+    );
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows a fetch error inside the slots area, not the "no free slots" message', async () => {
     getAvailableSlots.mockRejectedValue(new Error('network'));
+
+    renderPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+
+    const slotsArea = await screen.findByRole('group', { name: 'שעות פנויות' });
+    const inlineError = await screen.findByText('שגיאה בטעינת השעות הפנויות.');
+    expect(slotsArea).toContainElement(inlineError);
+    expect(
+      screen.queryByText('אין שעות פנויות בתאריך זה. יש לבחור תאריך אחר.')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
+  });
+
+  it('clears the slot fetch error once a retry succeeds', async () => {
+    getAvailableSlots.mockRejectedValueOnce(new Error('network'));
 
     renderPage();
     fireEvent.click(await screen.findByText('תספורת'));
@@ -225,7 +299,16 @@ describe('CustomerBookingPage', () => {
     expect(
       await screen.findByText('שגיאה בטעינת השעות הפנויות.')
     ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
+
+    // Choosing another date triggers a refetch that now succeeds
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: jerusalemAddDaysString(8) },
+    });
+
+    expect(await screen.findByRole('button', { name: '10:00' })).toBeInTheDocument();
+    expect(
+      screen.queryByText('שגיאה בטעינת השעות הפנויות.')
+    ).not.toBeInTheDocument();
   });
 
   it('keeps the SLOT_TAKEN message and clears chips when the post-race refetch also fails', async () => {

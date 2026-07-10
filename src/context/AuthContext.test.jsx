@@ -15,7 +15,16 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 function Probe() {
-  const { session, profile, role, loading, profileError, retryProfile, signOut } = useAuth();
+  const {
+    session,
+    profile,
+    role,
+    loading,
+    profileError,
+    accountDisabled,
+    retryProfile,
+    signOut,
+  } = useAuth();
   return (
     <div>
       <div data-testid="loading">{String(loading)}</div>
@@ -25,10 +34,11 @@ function Probe() {
         {profile ? `${profile.first_name} ${profile.last_name}` : 'none'}
       </div>
       <div data-testid="profile-error">{String(profileError)}</div>
+      <div data-testid="account-disabled">{String(accountDisabled)}</div>
       <button type="button" onClick={retryProfile}>
         retry
       </button>
-      <button type="button" onClick={() => signOut()}>
+      <button type="button" onClick={() => signOut().catch(() => {})}>
         sign-out
       </button>
     </div>
@@ -82,7 +92,98 @@ describe('AuthContext', () => {
     expect(screen.getByTestId('role')).toHaveTextContent('Admin');
     expect(screen.getByTestId('name')).toHaveTextContent('דנה לוי');
     expect(screen.getByTestId('profile-error')).toHaveTextContent('false');
+    expect(screen.getByTestId('account-disabled')).toHaveTextContent('false');
     expect(supabase.from).toHaveBeenCalledWith('users');
+  });
+
+  it('selects deleted_at so deactivated accounts can be detected', async () => {
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    const chain = mockUsersSingle({
+      data: { id: 'user-1', first_name: 'דנה', last_name: 'לוי', role: 'Admin', deleted_at: null },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+    expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('deleted_at'));
+  });
+
+  it('signs out and flags a soft-deleted (deactivated) account', async () => {
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    mockUsersSingle({
+      data: {
+        id: 'user-1',
+        first_name: 'דנה',
+        last_name: 'לוי',
+        role: 'Employee',
+        deleted_at: '2026-07-01T00:00:00Z',
+      },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('account-disabled')).toHaveTextContent('true');
+    });
+    expect(screen.getByTestId('role')).toHaveTextContent('none');
+    expect(screen.getByTestId('name')).toHaveTextContent('none');
+    expect(screen.getByTestId('profile-error')).toHaveTextContent('false');
+    expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    expect(supabase.auth.signOut).toHaveBeenCalled();
+  });
+
+  it('clears the disabled flag when an active profile loads afterwards', async () => {
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    const single = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: { id: 'user-1', role: 'Employee', deleted_at: '2026-07-01T00:00:00Z' },
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        data: { id: 'user-2', first_name: 'יוסי', last_name: 'כהן', role: 'Employee', deleted_at: null },
+        error: null,
+      });
+    const eq = vi.fn().mockReturnValue({ single });
+    const select = vi.fn().mockReturnValue({ eq });
+    supabase.from.mockReturnValue({ select });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('account-disabled')).toHaveTextContent('true');
+    });
+
+    await act(async () => {
+      authChangeCb('SIGNED_IN', { user: { id: 'user-2' } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('account-disabled')).toHaveTextContent('false');
+    });
+    expect(screen.getByTestId('role')).toHaveTextContent('Employee');
   });
 
   it('clears profile and stops loading when there is no session', async () => {
@@ -201,6 +302,28 @@ describe('AuthContext', () => {
     await waitFor(() => {
       expect(supabase.auth.signOut).toHaveBeenCalled();
     });
+  });
+
+  it('signOut throws when supabase reports an error so callers can react', async () => {
+    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
+    supabase.auth.signOut.mockResolvedValue({ error: new Error('network down') });
+
+    let capturedSignOut;
+    function Capture() {
+      capturedSignOut = useAuth().signOut;
+      return null;
+    }
+
+    render(
+      <AuthProvider>
+        <Capture />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(capturedSignOut).toBeDefined();
+    });
+    await expect(capturedSignOut()).rejects.toThrow('network down');
   });
 
   it('unsubscribes from auth changes on unmount', async () => {

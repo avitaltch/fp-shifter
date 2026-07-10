@@ -4,6 +4,52 @@
   gap: 1rem;
 }
 
+.team-page .invite-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.25rem;
+}
+
+.team-page .invite-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  color: #1f2937;
+}
+
+.team-page .invite-hint {
+  margin: 0 0 1rem;
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.team-page .invite-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.team-page .invite-form input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 1rem;
+  min-height: 40px;
+}
+
+.team-page .invite-form .btn-primary {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
 .team-page .team-card {
   background: #ffffff;
   border-radius: 16px;
@@ -54,6 +100,17 @@
 }
 
 .team-page .icon-btn.cancel:hover:not(:disabled) {
+  color: #dc2626;
+}
+
+.team-page .member-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.team-page .icon-btn.deactivate:hover:not(:disabled) {
+  background: #fee2e2;
   color: #dc2626;
 }
 
@@ -132,6 +189,19 @@
 @media (max-width: 600px) {
   .team-page .team-card {
     padding: 1rem;
+  }
+
+  .team-page .invite-card {
+    padding: 1rem;
+  }
+
+  .team-page .invite-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .team-page .invite-form .btn-primary {
+    width: 100%;
   }
 
   .team-page .team-member {

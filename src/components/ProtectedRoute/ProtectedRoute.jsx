@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import PageContainer from '../PageContainer/PageContainer';
 import LoadingSpinner from '../LoadingSpinner/LoadingSpinner';
@@ -6,13 +6,29 @@ import LoadingSpinner from '../LoadingSpinner/LoadingSpinner';
 // UI-level gate only — real enforcement is the RLS in supabase/rls.sql.
 // The role comes from public.users via AuthContext, not user_metadata.
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { session, role, loading, profileError, retryProfile } = useAuth();
+  const { session, role, loading, profileError, accountDisabled, retryProfile, signOut } =
+    useAuth();
   const location = useLocation();
 
   if (loading) {
     return (
       <PageContainer size="sm">
         <LoadingSpinner text="טוען..." />
+      </PageContainer>
+    );
+  }
+
+  // Deactivated account: AuthContext already dropped the session — explain
+  // why instead of bouncing to the login form with no context.
+  if (accountDisabled) {
+    return (
+      <PageContainer size="sm">
+        <div style={{ textAlign: 'center', padding: '2rem 0' }}>
+          <p className="error-text">החשבון הושבת. פנו למנהל.</p>
+          <Link to="/login" className="btn-primary">
+            חזרה למסך הכניסה
+          </Link>
+        </div>
       </PageContainer>
     );
   }
@@ -28,9 +44,18 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
       <PageContainer size="sm">
         <div style={{ textAlign: 'center', padding: '2rem 0' }}>
           <p className="error-text">שגיאה בטעינת פרופיל המשתמש.</p>
-          <button type="button" className="btn-primary" onClick={retryProfile}>
-            נסה שוב
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+            <button type="button" className="btn-primary" onClick={retryProfile}>
+              נסה שוב
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => signOut().catch((err) => console.error('Sign out failed:', err))}
+            >
+              התנתק
+            </button>
+          </div>
         </div>
       </PageContainer>
     );

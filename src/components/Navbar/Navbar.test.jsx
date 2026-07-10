@@ -88,12 +88,14 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: /המשמרות שלי/ })).toBeInTheDocument();
   });
 
-  it('uses the drawer for Admin so the crowded link list does not overflow', () => {
+  it('keeps a horizontal nav for Admin on a wide viewport, grouped with separators', () => {
     authAs('Admin');
     const { container } = renderNavbar();
 
-    expect(container.querySelector('.navbar')).toHaveClass('navbar--drawer');
-    expect(screen.getByRole('button', { name: /פתח תפריט/ })).toBeInTheDocument();
+    expect(container.querySelector('.navbar')).not.toHaveClass('navbar--drawer');
+    expect(screen.queryByRole('button', { name: /פתח תפריט/ })).not.toBeInTheDocument();
+    // Admin group + staff group are visually separated
+    expect(container.querySelectorAll('.nav-divider')).toHaveLength(2);
   });
 
   it('keeps a horizontal nav for Employee on a wide viewport', () => {
@@ -102,6 +104,23 @@ describe('Navbar', () => {
 
     expect(container.querySelector('.navbar')).not.toHaveClass('navbar--drawer');
     expect(screen.queryByRole('button', { name: /פתח תפריט/ })).not.toBeInTheDocument();
+  });
+
+  it('uses the drawer on a narrow viewport for Admin', () => {
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    authAs('Admin');
+    const { container } = renderNavbar();
+
+    expect(container.querySelector('.navbar')).toHaveClass('navbar--drawer');
+    expect(screen.getByRole('button', { name: /פתח תפריט/ })).toBeInTheDocument();
   });
 
   it('signs out via AuthContext and navigates to /login', async () => {
@@ -114,6 +133,24 @@ describe('Navbar', () => {
       expect(signOut).toHaveBeenCalled();
     });
     expect(mockNavigate).toHaveBeenCalledWith('/login');
+  });
+
+  it('stays in place (no navigation) when sign-out fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    signOut.mockRejectedValue(new Error('network down'));
+    authAs('Employee');
+    renderNavbar();
+
+    fireEvent.click(screen.getByRole('button', { name: /התנתק/ }));
+
+    await waitFor(() => {
+      expect(signOut).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(consoleError).toHaveBeenCalled();
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it('toggles the mobile menu open and closed', () => {

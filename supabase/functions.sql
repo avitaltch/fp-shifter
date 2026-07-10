@@ -259,6 +259,15 @@ begin
     raise exception 'FORBIDDEN';
   end if;
 
+  -- Deactivated (soft-deleted) staff must not claim shifts even if they
+  -- still hold a live JWT.
+  if not exists (
+    select 1 from users u
+    where u.id = v_uid and u.deleted_at is null
+  ) then
+    raise exception 'ACCOUNT_DISABLED';
+  end if;
+
   select ai.* into v_item
   from appointment_items ai
   join appointments ap on ap.id = ai.appointment_id
@@ -360,6 +369,276 @@ end;
 $$;
 
 -- ------------------------------------------------------------
+-- assign_shift — admin assignment with the same server-side checks
+-- as claim_shift (skill, availability, conflicts), so the browser
+-- cannot assign an ineligible employee even with a tampered client.
+-- ------------------------------------------------------------
+create or replace function public.assign_shift(
+  p_item_id uuid,
+  p_user_id uuid
+)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_item record;
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  if not exists (
+    select 1 from users u
+    where u.id = p_user_id and u.deleted_at is null
+  ) then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+
+  select ai.* into v_item
+  from appointment_items ai
+  join appointments ap on ap.id = ai.appointment_id
+  where ai.id = p_item_id
+    and ai.deleted_at is null
+    and ap.deleted_at is null
+    and ap.status <> 'Cancelled';
+
+  if not found then
+    raise exception 'SHIFT_TAKEN';
+  end if;
+
+  if not exists (
+    select 1 from employee_skills es
+    where es.user_id = p_user_id and es.service_type_id = v_item.service_type_id
+  ) then
+    raise exception 'NOT_QUALIFIED';
+  end if;
+
+  if not exists (
+    select 1 from availabilities a
+    where a.user_id = p_user_id
+      and a.available_date = v_item.work_date
+      and a.start_time <= v_item.start_time
+      and a.end_time >= v_item.end_time
+  ) then
+    raise exception 'NOT_AVAILABLE';
+  end if;
+
+  update appointment_items
+  set user_id = p_user_id
+  where id = p_item_id and user_id is null;
+
+  if not found then
+    raise exception 'SHIFT_TAKEN';
+  end if;
+
+  return json_build_object('item_id', p_item_id, 'user_id', p_user_id);
+
+exception
+  when exclusion_violation then
+    -- overlaps another assignment the target employee already has
+    raise exception 'SHIFT_CONFLICT';
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- unassign_shift — admin returns an assigned item to the open
+-- pool. Past work is history and stays assigned.
+-- ------------------------------------------------------------
+create or replace function public.unassign_shift(p_item_id uuid)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_item record;
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  select ai.* into v_item
+  from appointment_items ai
+  where ai.id = p_item_id
+    and ai.deleted_at is null
+    and ai.user_id is not null;
+
+  if not found then
+    raise exception 'ALREADY_UNASSIGNED';
+  end if;
+
+  if v_item.work_date < public.business_now()::date then
+    raise exception 'CANNOT_UNASSIGN_PAST';
+  end if;
+
+  update appointment_items
+  set user_id = null
+  where id = p_item_id;
+
+  return json_build_object('item_id', p_item_id, 'user_id', null);
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- admin_deactivate_user / admin_reactivate_user — staff offboarding.
+-- Deactivation soft-deletes the profile AND returns the employee's
+-- future assignments to the open pool in one transaction, so booked
+-- work is never stranded on a disabled account.
+-- ------------------------------------------------------------
+create or replace function public.admin_deactivate_user(p_user_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+  if auth.uid() = p_user_id then
+    -- an admin deactivating themselves could lock everyone out
+    raise exception 'CANNOT_DEACTIVATE_SELF';
+  end if;
+
+  update users set deleted_at = now()
+  where id = p_user_id and deleted_at is null;
+  if not found then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+
+  update appointment_items
+  set user_id = null
+  where user_id = p_user_id
+    and work_date >= public.business_now()::date
+    and deleted_at is null;
+end;
+$$;
+
+create or replace function public.admin_reactivate_user(p_user_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  update users set deleted_at = null
+  where id = p_user_id and deleted_at is not null;
+  if not found then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- customer_get_appointment — anon self-service lookup.
+-- Requires appointment id AND phone (trim-normalized like
+-- book_appointment). Wrong id and wrong phone both raise the
+-- same APPOINTMENT_NOT_FOUND so neither is leaked. Soft-deleted
+-- service names are included deliberately (security definer).
+-- ------------------------------------------------------------
+create or replace function public.customer_get_appointment(
+  p_appointment_id uuid,
+  p_phone text
+)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_appt record;
+  v_start_time time;
+  v_end_time time;
+  v_service_names text[];
+begin
+  select a.id, a.visit_date, a.status, c.first_name
+  into v_appt
+  from appointments a
+  join customers c on c.id = a.customer_id
+  where a.id = p_appointment_id
+    and a.deleted_at is null
+    and c.deleted_at is null
+    and trim(c.phone) = trim(coalesce(p_phone, ''));
+
+  if not found then
+    raise exception 'APPOINTMENT_NOT_FOUND';
+  end if;
+
+  -- Include soft-deleted items so a cancelled appointment still shows
+  -- its original time range and services.
+  select min(ai.start_time), max(ai.end_time)
+  into v_start_time, v_end_time
+  from appointment_items ai
+  where ai.appointment_id = v_appt.id;
+
+  select coalesce(array_agg(st.name order by ai.start_time, ai.id), '{}')
+  into v_service_names
+  from appointment_items ai
+  join service_types st on st.id = ai.service_type_id
+  where ai.appointment_id = v_appt.id;
+
+  return json_build_object(
+    'appointment_id', v_appt.id,
+    'visit_date', v_appt.visit_date,
+    'start_time', v_start_time,
+    'end_time', v_end_time,
+    'status', v_appt.status,
+    'service_names', to_json(v_service_names),
+    'customer_first_name', v_appt.first_name
+  );
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- customer_cancel_appointment — anon self-service cancel.
+-- Same phone gate as customer_get_appointment. Mirrors admin
+-- cancel_appointment (status = Cancelled + soft-delete items)
+-- but only for future appointments that are not already cancelled.
+-- ------------------------------------------------------------
+create or replace function public.customer_cancel_appointment(
+  p_appointment_id uuid,
+  p_phone text
+)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_appt record;
+  v_start_time time;
+begin
+  select a.id, a.visit_date, a.status
+  into v_appt
+  from appointments a
+  join customers c on c.id = a.customer_id
+  where a.id = p_appointment_id
+    and a.deleted_at is null
+    and c.deleted_at is null
+    and trim(c.phone) = trim(coalesce(p_phone, ''));
+
+  if not found then
+    raise exception 'APPOINTMENT_NOT_FOUND';
+  end if;
+
+  if v_appt.status = 'Cancelled' then
+    raise exception 'ALREADY_CANCELLED';
+  end if;
+
+  select min(ai.start_time)
+  into v_start_time
+  from appointment_items ai
+  where ai.appointment_id = v_appt.id
+    and ai.deleted_at is null;
+
+  if v_start_time is null
+     or (v_appt.visit_date + v_start_time)::timestamp <= public.business_now() then
+    raise exception 'CANCEL_TOO_LATE';
+  end if;
+
+  update appointments
+  set status = 'Cancelled'
+  where id = v_appt.id and deleted_at is null and status <> 'Cancelled';
+
+  if not found then
+    raise exception 'ALREADY_CANCELLED';
+  end if;
+
+  update appointment_items
+  set deleted_at = now()
+  where appointment_id = v_appt.id and deleted_at is null;
+end;
+$$;
+
+-- ------------------------------------------------------------
 -- Grants. Postgres gives EXECUTE to PUBLIC by default, so every
 -- function is revoked first; only what clients need is granted back.
 -- qualified_employees/business_now are internal (called from the
@@ -371,10 +650,22 @@ revoke execute on function public.get_available_slots(date, uuid[]) from public;
 revoke execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) from public;
 revoke execute on function public.claim_shift(uuid) from public;
 revoke execute on function public.cancel_appointment(uuid) from public;
+revoke execute on function public.customer_get_appointment(uuid, text) from public;
+revoke execute on function public.customer_cancel_appointment(uuid, text) from public;
 revoke execute on function public.admin_set_user_role(uuid, text) from public;
+revoke execute on function public.assign_shift(uuid, uuid) from public;
+revoke execute on function public.unassign_shift(uuid) from public;
+revoke execute on function public.admin_deactivate_user(uuid) from public;
+revoke execute on function public.admin_reactivate_user(uuid) from public;
 
 grant execute on function public.get_available_slots(date, uuid[]) to anon, authenticated;
 grant execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) to anon, authenticated;
+grant execute on function public.customer_get_appointment(uuid, text) to anon, authenticated;
+grant execute on function public.customer_cancel_appointment(uuid, text) to anon, authenticated;
 grant execute on function public.claim_shift(uuid) to authenticated;
 grant execute on function public.cancel_appointment(uuid) to authenticated;
 grant execute on function public.admin_set_user_role(uuid, text) to authenticated;
+grant execute on function public.assign_shift(uuid, uuid) to authenticated;
+grant execute on function public.unassign_shift(uuid) to authenticated;
+grant execute on function public.admin_deactivate_user(uuid) to authenticated;
+grant execute on function public.admin_reactivate_user(uuid) to authenticated;

@@ -32,3 +32,23 @@ export async function bookAppointment({ firstName, lastName, phone, email, visit
 export async function cancelAppointment(appointmentId) {
   return unwrap(await supabase.rpc('cancel_appointment', { p_appointment_id: appointmentId }));
 }
+
+// Customer self-service lookup — requires appointment id + phone together.
+export async function customerGetAppointment(appointmentId, phone) {
+  return unwrap(
+    await supabase.rpc('customer_get_appointment', {
+      p_appointment_id: appointmentId,
+      p_phone: phone,
+    })
+  );
+}
+
+// Customer self-service cancel — same phone gate; frees the slot like admin cancel.
+export async function customerCancelAppointment(appointmentId, phone) {
+  return unwrap(
+    await supabase.rpc('customer_cancel_appointment', {
+      p_appointment_id: appointmentId,
+      p_phone: phone,
+    })
+  );
+}

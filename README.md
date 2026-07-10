@@ -1,81 +1,221 @@
-# FP Shifter (ShiftSync)
+# ShiftSync (FP Shifter)
 
-A generic booking & shift-management system for service businesses (a beauty salon is the demo use case). Customers book appointments online and only ever see time slots where a qualified employee is actually free; managers assign shifts, manage services, and track the day; employees publish availability, claim open shifts, and progress their tasks.
+**Live app:** [https://fp-shifter.vercel.app](https://fp-shifter.vercel.app)  
+**Repository:** [https://github.com/avitaltch/fp-shifter](https://github.com/avitaltch/fp-shifter)
 
-Built with **React 19 + Vite** (Hebrew, RTL) and **Supabase** (Postgres, Auth, RLS).
+ShiftSync is an online booking and shift-management system for service businesses (demo: a beauty salon). Customers book only when a qualified employee is free; managers run the day; employees publish availability and claim open work.
 
-## Architecture
+Built with **React 19 + Vite** (Hebrew, RTL) and **Supabase** (Postgres, Auth, RLS, Edge Functions).
+
+---
+
+## The problem
+
+Small salons and clinics still run bookings and shifts on WhatsApp, paper diaries, or a shared Excel sheet. That creates double-bookings, no-shows that nobody can cancel online, and managers who spend evenings matching “who is free” with “who can do the service.” Staff cannot see their own schedule in one place, and customers have no self-service way to manage a booking after they leave the site.
+
+## Target audience
+
+| Role | When they use it |
+| --- | --- |
+| **Customers** | Book a visit online, then view/cancel via confirmation number + phone |
+| **Employees** | Publish availability (including bulk week/month), see assigned shifts, claim open shifts, edit profile |
+| **Managers (Admin)** | Services, team (invite / deactivate / skills), dashboard, assign/unassign shifts |
+
+Primary buyer: owner/manager of a single-location service business (salon, clinic, studio) that already has a small staff and wants one Hebrew RTL tool instead of chat + spreadsheet.
+
+## Competitors and differentiation
+
+| Alternative | What it does | Where ShiftSync differs |
+| --- | --- | --- |
+| WhatsApp / phone | Manual booking | Self-service booking + manage page; no chat backlog |
+| Excel / Google Sheets | Shared calendar | Real-time conflict prevention in the database; role-based access |
+| Generic calendar tools | Free/busy only | Skills + availability drive which slots appear; auto-assign least-loaded qualified staff |
+| Heavy salon SaaS (e.g. Treatwell-style) | Full marketplace | Single-business, invite-only staff, Hebrew RTL, no marketplace fees |
+
+**Core differentiation:** customers never see a slot unless a qualified, available employee can take it — enforced in Postgres RPCs and an exclusion constraint, not only in the UI.
+
+---
+
+## Try the live product
+
+| Flow | How |
+| --- | --- |
+| **Customer booking (no login)** | Open [/book](https://fp-shifter.vercel.app/book) → pick services → date/time → details → confirmation |
+| **Manage / cancel a booking** | [/book/manage](https://fp-shifter.vercel.app/book/manage) with confirmation number + phone from the success page |
+| **Staff login** | [/login](https://fp-shifter.vercel.app/login) — invite-only (no public sign-up) |
+
+> **Demo staff accounts:** if the course reviewer needs staff credentials, add them here before submission (email + temporary password). Public booking works without any account.
+
+---
+
+## External services and integrations
+
+| Service | Type | Role in the product |
+| --- | --- | --- |
+| **Supabase Auth** | Authentication | Invite-only staff accounts; password set/recovery; JWT for protected routes and Edge Functions |
+| **Supabase Postgres** | Database | All business data; RLS; exclusion constraints against double-booking |
+| **Supabase RPC (security definer)** | Server logic | `get_available_slots`, `book_appointment`, `claim_shift`, `cancel_appointment`, customer manage RPCs, admin assign/unassign/deactivate |
+| **Supabase Edge Function (`invite-user`)** | Server logic | Admin invites staff with the **service-role** key (never shipped to the browser) |
+| **Supabase Auth email** | Email | Invite and password-reset links back to `/login` |
+| **Vercel** | Hosting | Production SPA deploy + SPA rewrites for React Router |
+
+No Google OAuth and no third-party AI API in the product runtime — AI was used in the *build process* (Cursor agents), not as a live product dependency.
+
+---
+
+## Database ERD (Supabase)
+
+```mermaid
+erDiagram
+  auth_users ||--|| users : "id"
+  customers ||--o{ appointments : "customer_id"
+  appointments ||--|{ appointment_items : "appointment_id"
+  service_types ||--o{ appointment_items : "service_type_id"
+  users ||--o{ appointment_items : "user_id (nullable)"
+  users ||--o{ employee_skills : "user_id"
+  service_types ||--o{ employee_skills : "service_type_id"
+  users ||--o{ availabilities : "user_id"
+
+  customers {
+    uuid id PK
+    text first_name
+    text last_name
+    text email
+    text phone UK
+    text address
+    text notes
+    timestamptz deleted_at
+  }
+
+  users {
+    uuid id PK_FK
+    text first_name
+    text last_name
+    text role
+    text phone
+    date hire_date
+    timestamptz deleted_at
+  }
+
+  service_types {
+    uuid id PK
+    text name UK
+    text description
+    numeric base_price
+    int default_duration
+    timestamptz deleted_at
+  }
+
+  employee_skills {
+    uuid id PK
+    uuid user_id FK
+    uuid service_type_id FK
+  }
+
+  appointments {
+    uuid id PK
+    uuid customer_id FK
+    date visit_date
+    numeric total_price
+    text status
+    timestamptz deleted_at
+  }
+
+  appointment_items {
+    uuid id PK
+    uuid appointment_id FK
+    uuid service_type_id FK
+    uuid user_id FK
+    date work_date
+    time start_time
+    time end_time
+    text status
+    timestamptz deleted_at
+  }
+
+  availabilities {
+    uuid id PK
+    uuid user_id FK
+    date available_date
+    time start_time
+    time end_time
+  }
+```
+
+**Design notes**
+
+- `users` extends `auth.users` (1:1); role is `Admin` | `Employee` and is RLS-protected.
+- Booking creates `appointments` + `appointment_items`; items may be unassigned (`user_id` null) for the open-shift pool.
+- Overlapping assignments for the same employee are blocked by a GiST **exclusion constraint**.
+- Soft deletes (`deleted_at`) keep history while hiding inactive rows from day-to-day lists.
+
+Source of truth: [`supabase/schema.sql`](supabase/schema.sql). You can also open **Supabase → Database → Schema Visualizer** for a live screenshot.
+
+---
+
+## Main product flows
+
+1. **Customer books** → `get_available_slots` → `book_appointment` (server pricing, skills, conflicts) → success page with confirmation number → optional `/book/manage`.
+2. **Employee opens availability** → single day or bulk week/month with workday toggles → appears in slot generation.
+3. **Manager runs the day** → dashboard (cancel / unassign / call customer) → assign open items (server-checked) → team invite / skills / deactivate.
+
+---
+
+## Architecture (for developers)
 
 ```
 src/
-  lib/
-    supabase.js      Supabase client (env-guarded)
-    api/             ALL data access, split by domain (services, booking,
-                     availability, shifts, assignment, dashboard, team)
-                     behind one facade — pages never build queries themselves
-    dates.js         Local-time date helpers (never UTC-based)
-    errors.js        RPC error code -> Hebrew message mapping
-  hooks/
-    useAsyncData.js  Fetch-on-mount lifecycle (data/loading/error/refetch)
-    useAction.js     Mutation lifecycle (busy row, friendly error, message)
-  context/
-    AuthContext.jsx  Single auth subscription; role comes from public.users
-  components/        Navbar, Footer, ProtectedRoute, PageHeader, Alert, ...
-  pages/             One folder-less page per route
+  lib/api/          Domain API (booking, availability, shifts, team, …)
+  hooks/            useAsyncData, useAction
+  context/          AuthContext (role from public.users)
+  pages/            One page per route
 supabase/
-  schema.sql         Tables, constraints (incl. overlap-exclusion), triggers
-  rls.sql            RLS policies + column-guard trigger (DB-enforced roles)
-  functions.sql      get_available_slots, book_appointment, claim_shift,
-                     cancel_appointment, admin_set_user_role
-  seed.sql           Optional demo data
-  migrate_v1_to_v2.sql  One-time migration for a pre-existing v1 database
+  schema.sql / rls.sql / functions.sql
+  edge-functions/invite-user/
 ```
 
-### Security model
-- **Roles live in `public.users.role`**, guarded by RLS (`with check` pins a user's own role; only `admin_set_user_role` can change it — and never one's own). `user_metadata` is never trusted.
-- **Public sign-up is disabled** — employees are invited by an Admin (Supabase Dashboard → Authentication → Invite user). Anonymous visitors can only read the service catalog and call the two booking RPCs; the security-definer helper functions (`role_of`, `qualified_employees`, ...) are revoked from client roles.
-- **Booking is a transactional security-definer RPC** (`book_appointment`): server-side pricing, skill matching, availability + conflict checks, atomic customer/appointment/items creation. Double-booking is additionally blocked by a Postgres exclusion constraint.
-- **Employees can only change `status`/`notes` on their own items** — a column-guard trigger rejects every other column, so times, assignees, and soft-deletes can't be tampered with from the client. Claiming an open shift goes through the `claim_shift` RPC, which enforces skills, availability, and conflicts server-side.
-- **Cancelling** goes through `cancel_appointment` (admin-only RPC) which sets the status *and* soft-deletes the items in one transaction, so the booked span is genuinely freed for re-booking.
-- Client route guards (`ProtectedRoute`) are UX only; enforcement is in the database.
+### Security model (short)
 
-### Booking flow
-1. Customer picks services → `get_available_slots(date, service_ids)` computes a 15-minute grid over qualified employees' availability minus existing assignments (in the business timezone, Asia/Jerusalem).
-2. `book_appointment(...)` re-validates everything server-side, upserts the customer by phone, auto-assigns the least-loaded qualified employee, and returns the real booking details shown on the success page.
-3. If an employee later becomes unavailable, items can be unassigned; they then appear on the employees' "open shifts" page (self-claim with race-safe guarded updates) and the manager's assignment page (which only offers qualified, available, conflict-free staff).
+- Roles in `public.users`, not `user_metadata`.
+- Public sign-up disabled; staff invited via Edge Function.
+- Anon can only call booking/manage RPCs + read active services.
+- Client `ProtectedRoute` is UX; enforcement is RLS + security-definer RPCs.
 
-## Setup
+---
+
+## Setup (local)
 
 1. Create a Supabase project.
-2. In the SQL editor run, in order: `supabase/schema.sql`, `supabase/rls.sql`, `supabase/functions.sql` (fresh DB), or `supabase/migrate_v1_to_v2.sql` then `rls.sql` + `functions.sql` (existing v1 DB).
-3. Authentication → Providers → Email: **disable** "Allow new users to sign up". Invite your staff via Authentication → Users → Invite.
-4. Bootstrap the first Admin:
+2. SQL editor, in order: `schema.sql` → `rls.sql` → `functions.sql`.
+3. Auth → Email: disable “Allow new users to sign up”.
+4. Bootstrap first Admin after invite:
    ```sql
    update public.users set role = 'Admin'
    where id = (select id from auth.users where email = 'you@example.com');
    ```
-5. Optionally run `supabase/seed.sql` for demo services/skills/availability.
-6. `cp .env.example .env` and fill in the project URL + anon key.
+5. Optional: `supabase/seed.sql`.
+6. `cp .env.example .env` → set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 7. `npm install && npm run dev`
 
 ## Deploy (Vercel)
 
-1. Import the repo in Vercel — the Vite framework preset is detected automatically (`npm run build`, output `dist/`).
-2. Add the environment variables (Project → Settings → Environment Variables):
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-3. `vercel.json` rewrites all routes to `index.html` so React Router deep links (e.g. `/login`, `/dashboard`) work on refresh.
-4. In Supabase, set Authentication → URL Configuration → Site URL to the Vercel production URL (and add preview URLs to Redirect URLs) so invite/recovery emails land back on the deployed app.
+1. Import the repo; Vite preset (`npm run build` → `dist/`).
+2. Env: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+3. Supabase Auth → Site URL / Redirect URLs = production URL.
+4. Edge Function:
+   ```bash
+   supabase functions deploy invite-user --project-ref <ref>
+   supabase secrets set SITE_URL=https://fp-shifter.vercel.app
+   ```
+   (If the CLI expects `supabase/functions/`, symlink from `supabase/edge-functions/invite-user`.)
 
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Vite dev server |
-| `npm test` / `npm run test:watch` | Vitest unit tests |
-| `npm run coverage` | Unit tests + V8 coverage |
-| `npm run e2e` | Playwright E2E (network-stubbed) |
-| `npm run lint` | Oxlint |
+| `npm test` | Vitest unit tests |
+| `npm run e2e` | Playwright E2E (stubbed) |
 | `npm run build` | Production build |
 
-CI (GitHub Actions) runs lint, unit tests, the production build, and Playwright e2e on every push/PR.
+CI runs lint, unit tests, build, and e2e on every push/PR.

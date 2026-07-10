@@ -55,17 +55,16 @@ export function eligibleEmployeesFor(item, { staff, skills, availabilities, assi
   });
 }
 
-// Assign an unassigned item to an employee; guards against a concurrent
-// volunteer claim with the same row-count check the claim flow uses.
+// Assign an unassigned item to an employee. The assign_shift RPC re-checks
+// skill/availability/conflicts server-side (the client-side filter above is
+// UX only) and throws SHIFT_TAKEN if a volunteer claimed it concurrently.
 export async function assignShift(itemId, userId) {
-  const rows = unwrap(
-    await supabase
-      .from('appointment_items')
-      .update({ user_id: userId })
-      .eq('id', itemId)
-      .is('user_id', null)
-      .select()
+  return unwrap(
+    await supabase.rpc('assign_shift', { p_item_id: itemId, p_user_id: userId })
   );
-  if (!rows || rows.length === 0) throw new Error('SHIFT_TAKEN');
-  return rows[0];
+}
+
+// Return an assigned item to the open pool (admin only, today or future).
+export async function unassignShift(itemId) {
+  return unwrap(await supabase.rpc('unassign_shift', { p_item_id: itemId }));
 }

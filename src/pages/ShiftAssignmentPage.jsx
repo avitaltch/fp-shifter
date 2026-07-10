@@ -27,8 +27,8 @@ const ShiftAssignmentPage = () => {
     );
     if (!confirmed) return;
 
-    // Guarded update: if an employee volunteered concurrently the update
-    // matches 0 rows and throws SHIFT_TAKEN instead of overwriting.
+    // assign_shift RPC: re-checks skill/availability/conflicts server-side
+    // and throws SHIFT_TAKEN if an employee volunteered concurrently.
     const { ok } = await run(item.id, () => assignShift(item.id, userId), {
       success: 'השיבוץ בוצע בהצלחה.',
       errorFallback: 'שגיאה בשיבוץ העובד.',

@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { listServices, getAvailableSlots, bookAppointment } from '../lib/api';
 import { friendlyError } from '../lib/errors';
 import { Check, Clock, Calendar as CalendarIcon, User, Scissors } from 'lucide-react';
-import { todayString, addDaysString, toTimeDisplay, formatDuration, formatHebrewDate } from '../lib/dates';
+import { jerusalemTodayString, jerusalemAddDaysString, toTimeDisplay, formatDuration, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
+import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
 import './CustomerBookingPage.css';
 
 const PHONE_PATTERN = /^[0-9+\-\s]{7,15}$/;
@@ -19,6 +20,7 @@ const CustomerBookingPage = () => {
   const [selectedTime, setSelectedTime] = useState('');
   const [slots, setSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState(null);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -51,12 +53,14 @@ const CustomerBookingPage = () => {
     if (!selectedDate || selectedServices.length === 0) {
       setSlots([]);
       setSelectedTime('');
+      setSlotsError(null);
       return;
     }
     let cancelled = false;
     const fetchSlots = async () => {
       try {
         setSlotsLoading(true);
+        setSlotsError(null);
         const data = await getAvailableSlots(selectedDate, selectedServices);
         if (!cancelled) {
           setSlots(data || []);
@@ -65,7 +69,8 @@ const CustomerBookingPage = () => {
       } catch (err) {
         if (!cancelled) {
           setSlots([]);
-          setSubmitError(friendlyError(err, 'שגיאה בטעינת השעות הפנויות.'));
+          setSelectedTime('');
+          setSlotsError(friendlyError(err, 'שגיאה בטעינת השעות הפנויות.'));
         }
         console.error('Error fetching slots:', err);
       } finally {
@@ -104,19 +109,30 @@ const CustomerBookingPage = () => {
         serviceIds: selectedServices,
       });
 
-      navigate('/book/success', {
-        state: {
-          booking,
-          serviceNames: serviceTypes
-            .filter((s) => selectedServices.includes(s.id))
-            .map((s) => s.name),
-        },
-      });
+      const confirmation = {
+        booking,
+        serviceNames: serviceTypes
+          .filter((s) => selectedServices.includes(s.id))
+          .map((s) => s.name),
+        customerName: `${firstName.trim()} ${lastName.trim()}`,
+        phone: phone.trim(),
+      };
+
+      // Keep a copy so the success page survives a refresh / direct visit.
+      try {
+        sessionStorage.setItem(BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
+      } catch {
+        /* storage unavailable — router state still works */
+      }
+
+      navigate('/book/success', { state: confirmation });
     } catch (err) {
       console.error(err);
       setSubmitError(friendlyError(err, 'שגיאת תקשורת, יש לנסות שוב.'));
-      // The chosen slot may be gone — refresh the list
-      if ((err?.message || '').includes('SLOT_TAKEN')) {
+      // The chosen slot may be gone (taken by someone else or now in the
+      // past) — clear the selection and refresh the list
+      const message = err?.message || '';
+      if (message.includes('SLOT_TAKEN') || message.includes('SLOT_IN_PAST')) {
         setSelectedTime('');
         try {
           setSlots((await getAvailableSlots(selectedDate, selectedServices)) || []);
@@ -149,6 +165,10 @@ const CustomerBookingPage = () => {
       <div className="booking-header">
         <h1>הזמנת תור חדש</h1>
         <p className="subtitle">יש לבחור את הטיפולים לשילוב בביקור הקרוב.</p>
+        <p className="manage-entry">
+          יש לכם תור?{' '}
+          <Link to="/book/manage">לניהול תור קיים</Link>
+        </p>
       </div>
 
       <form onSubmit={handleBooking} className="booking-form">
@@ -212,8 +232,8 @@ const CustomerBookingPage = () => {
                         /* already open or unsupported */
                       }
                     }}
-                    min={todayString()}
-                    max={addDaysString(60)}
+                    min={jerusalemTodayString()}
+                    max={jerusalemAddDaysString(60)}
                   />
                 </div>
               </div>
@@ -222,6 +242,8 @@ const CustomerBookingPage = () => {
                   <span className="slots-label">שעות פנויות</span>
                   {slotsLoading ? (
                     <LoadingSpinner text="בודק זמינות..." inline={true} />
+                  ) : slotsError ? (
+                    <p className="error-state" role="alert">{slotsError}</p>
                   ) : slots.length === 0 ? (
                     <p className="no-slots">אין שעות פנויות בתאריך זה. יש לבחור תאריך אחר.</p>
                   ) : (

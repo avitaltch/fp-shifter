@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
-import { Users, Calendar, Clock, ArrowLeft, XCircle } from 'lucide-react';
-import { getDashboardData, cancelAppointment } from '../lib/api';
+import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, UserX } from 'lucide-react';
+import { getDashboardData, cancelAppointment, unassignShift } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
 import { todayString, addDaysString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
@@ -25,8 +25,8 @@ const ManagerDashboardPage = () => {
   const { data, setData, loading, error, refetch } = useAsyncData(fetchDashboard, {
     errorMessage: 'שגיאה בטעינת נתוני הדאשבורד.',
   });
-  // A failed cancel usually means the list is stale — refetch on error.
-  const { busyKey: cancellingId, message, run } = useAction({ onError: refetch });
+  // A failed cancel/unassign usually means the list is stale — refetch on error.
+  const { busyKey, message, run } = useAction({ onError: refetch });
 
   const appointments = data ?? [];
 
@@ -44,6 +44,34 @@ const ManagerDashboardPage = () => {
       errorFallback: 'שגיאה בביטול התור.',
     });
     if (ok) setData((prev) => prev.filter((a) => a.id !== apt.id));
+  };
+
+  const handleUnassign = async (apt, item) => {
+    const employeeName = item.users?.first_name || 'העובד/ת';
+    const confirmed = window.confirm(
+      `לבטל את השיבוץ של ${employeeName} לטיפול "${item.service_types?.name || ''}"? הטיפול יחזור לרשימת הממתינים לשיבוץ.`
+    );
+    if (!confirmed) return;
+
+    // unassign_shift RPC: admin-only, blocks past items server-side.
+    const { ok } = await run(`unassign:${item.id}`, () => unassignShift(item.id), {
+      success: 'השיבוץ בוטל והטיפול ממתין לשיבוץ מחדש.',
+      errorFallback: 'שגיאה בביטול השיבוץ.',
+    });
+    if (ok) {
+      setData((prev) =>
+        prev.map((a) =>
+          a.id === apt.id
+            ? {
+                ...a,
+                appointment_items: a.appointment_items.map((i) =>
+                  i.id === item.id ? { ...i, user_id: null, users: null } : i
+                ),
+              }
+            : a
+        )
+      );
+    }
   };
 
   if (loading) return (
@@ -124,7 +152,15 @@ const ManagerDashboardPage = () => {
               return (
                 <div key={apt.id} className="appointment-card">
                   <div className="apt-header">
-                    <h3>לקוח/ה: {apt.customers?.first_name} {apt.customers?.last_name}</h3>
+                    <div className="apt-customer">
+                      <h3>לקוח/ה: {apt.customers?.first_name} {apt.customers?.last_name}</h3>
+                      {apt.customers?.phone && (
+                        <a className="customer-phone" href={`tel:${apt.customers.phone}`}>
+                          <Phone size={14} />
+                          {apt.customers.phone}
+                        </a>
+                      )}
+                    </div>
                     <div className="apt-header-actions">
                       <span className={`status-badge ${(apt.status || 'Pending').toLowerCase()}`}>
                         {STATUS_LABELS[apt.status] || apt.status}
@@ -133,11 +169,11 @@ const ManagerDashboardPage = () => {
                         type="button"
                         className="cancel-apt-btn"
                         onClick={() => handleCancel(apt)}
-                        disabled={cancellingId !== null}
+                        disabled={busyKey !== null}
                         aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
                       >
                         <XCircle size={16} />
-                        {cancellingId === apt.id ? 'מבטל...' : 'ביטול תור'}
+                        {busyKey === apt.id ? 'מבטל...' : 'ביטול תור'}
                       </button>
                     </div>
                   </div>
@@ -155,6 +191,18 @@ const ManagerDashboardPage = () => {
                               ? `ע"י ${item.users.first_name}`
                               : 'טרם שובץ'}
                           </span>
+                          {item.user_id && (
+                            <button
+                              type="button"
+                              className="unassign-btn"
+                              onClick={() => handleUnassign(apt, item)}
+                              disabled={busyKey !== null}
+                              aria-label={`ביטול שיבוץ של ${item.users?.first_name || ''} לטיפול ${item.service_types?.name || ''}`}
+                            >
+                              <UserX size={14} />
+                              {busyKey === `unassign:${item.id}` ? 'מבטל שיבוץ...' : 'ביטול שיבוץ'}
+                            </button>
+                          )}
                         </div>
                         {index < items.length - 1 && (
                           <ArrowLeft className="chain-arrow" />
@@ -186,11 +234,11 @@ const ManagerDashboardPage = () => {
                       type="button"
                       className="cancel-apt-btn"
                       onClick={() => handleCancel(apt)}
-                      disabled={cancellingId !== null}
+                      disabled={busyKey !== null}
                       aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
                     >
                       <XCircle size={16} />
-                      {cancellingId === apt.id ? 'מבטל...' : 'ביטול'}
+                      {busyKey === apt.id ? 'מבטל...' : 'ביטול'}
                     </button>
                   </div>
                 </div>

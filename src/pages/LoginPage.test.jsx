@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import LoginPage from './LoginPage';
@@ -151,6 +151,38 @@ describe('LoginPage', () => {
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/employee/availability', { replace: true });
+    });
+  });
+
+  it('sends an Employee bounced off an /admin page to the role home, not back to /admin', async () => {
+    mockUseLocation.mockReturnValue({
+      pathname: '/login',
+      state: { from: { pathname: '/admin/assign' } },
+    });
+    mockProfileFetch({ role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/employee/shifts', { replace: true });
+    });
+  });
+
+  it('restores an /admin page for Admins', async () => {
+    mockUseLocation.mockReturnValue({
+      pathname: '/login',
+      state: { from: { pathname: '/admin/assign' } },
+    });
+    mockProfileFetch({ role: 'Admin' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+    fillAndSubmit();
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/admin/assign', { replace: true });
     });
   });
 
@@ -380,5 +412,87 @@ describe('LoginPage', () => {
       expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalled();
     });
     expect(sessionStorage.getItem('fp_password_recovery')).toBe('1');
+  });
+
+  it('ignores a stale recovery flag on a normal login (no callback in URL)', async () => {
+    sessionStorage.setItem('fp_password_recovery', '1');
+    mockProfileFetch({ role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+    fillAndSubmit();
+
+    // In the real app signInWithPassword fires SIGNED_IN — with a stale flag
+    // this used to hijack the login into set-password mode.
+    await act(async () => {
+      authChangeCb('SIGNED_IN', { user: { id: 'user-1' } });
+    });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/employee/shifts', { replace: true });
+    });
+    expect(screen.queryByRole('heading', { name: 'השלמת הרשמה' })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('fp_password_recovery')).toBeNull();
+  });
+
+  it('clears the recovery flag when returning from reset mode to login', async () => {
+    supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+    fireEvent.click(screen.getByRole('button', { name: 'שכחתי סיסמה' }));
+    fireEvent.change(screen.getByLabelText('אימייל'), {
+      target: { value: 'staff@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'שלח קישור לאיפוס' }));
+    await waitFor(() => {
+      expect(sessionStorage.getItem('fp_password_recovery')).toBe('1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'חזרה להתחברות' }));
+
+    expect(screen.getByRole('heading', { name: 'כניסת צוות' })).toBeInTheDocument();
+    expect(sessionStorage.getItem('fp_password_recovery')).toBeNull();
+  });
+
+  it('shows a Hebrew error when the callback URL carries error params', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/login?error=access_denied&error_description=Email+link+is+invalid+or+has+expired'
+    );
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+
+    expect(
+      await screen.findByText('הקישור אינו תקין או שפג תוקפו. בקשו קישור חדש.')
+    ).toBeInTheDocument();
+    // Params are stripped and the user gets the normal login form
+    expect(screen.getByRole('heading', { name: 'כניסת צוות' })).toBeInTheDocument();
+    expect(window.location.search).not.toContain('error');
+  });
+
+  it('shows a Hebrew error when a code callback times out without a session', async () => {
+    vi.useFakeTimers();
+    try {
+      window.history.replaceState({}, '', '/login?code=pkce-code');
+      supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
+      sessionStorage.setItem('fp_password_recovery', '1');
+
+      render(<MemoryRouter><LoginPage /></MemoryRouter>);
+      // flush getSession, then let the 2.5s grace period elapse
+      await act(async () => {});
+      await act(async () => {
+        vi.advanceTimersByTime(2600);
+      });
+
+      expect(
+        screen.getByText('הקישור אינו תקין או שפג תוקפו. בקשו קישור חדש.')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'כניסת צוות' })).toBeInTheDocument();
+      expect(sessionStorage.getItem('fp_password_recovery')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

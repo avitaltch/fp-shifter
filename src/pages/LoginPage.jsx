@@ -14,6 +14,8 @@ import './LoginPage.css';
 // updateUser — otherwise the user has an account but nothing to type at login.
 const RECOVERY_FLAG = 'fp_password_recovery';
 
+const CALLBACK_ERROR_MESSAGE = 'הקישור אינו תקין או שפג תוקפו. בקשו קישור חדש.';
+
 function authParamsFromUrl() {
   const search = new URLSearchParams(window.location.search);
   const hashRaw = window.location.hash?.startsWith('#')
@@ -23,7 +25,8 @@ function authParamsFromUrl() {
   const type = hash.get('type') || search.get('type');
   const hasCode = Boolean(search.get('code'));
   const hasToken = Boolean(hash.get('access_token') || hash.get('refresh_token'));
-  return { type, hasCode, hasToken, isCallback: Boolean(type || hasCode || hasToken) };
+  const authError = hash.get('error') || search.get('error') || null;
+  return { type, hasCode, hasToken, authError, isCallback: Boolean(type || hasCode || hasToken) };
 }
 
 function clearAuthParamsFromUrl() {
@@ -65,8 +68,12 @@ async function navigateAfterAuth(navigate, location, userId) {
     .single();
 
   const from = location.state?.from?.pathname;
-  const home = profile?.role === 'Admin' ? '/admin/dashboard' : '/employee/shifts';
-  navigate(from || home, { replace: true });
+  const isAdmin = profile?.role === 'Admin';
+  const home = isAdmin ? '/admin/dashboard' : '/employee/shifts';
+  // Only restore `from` when the role can actually access it — otherwise an
+  // Employee bounced off /admin/* would be silently bounced again.
+  const fromAllowed = from && (isAdmin || !from.startsWith('/admin'));
+  navigate(fromAllowed ? from : home, { replace: true });
 }
 
 async function loadNameDraft(userId, setFirstName, setLastName) {
@@ -114,8 +121,21 @@ const LoginPage = () => {
       if (!cancelled) setBootstrapping(false);
     };
 
-    const { type, isCallback } = authParamsFromUrl();
-    const recoveryIntent = type === 'recovery' || isRecoveryPending();
+    const { type, isCallback, authError } = authParamsFromUrl();
+
+    // Failed callbacks (expired/used links) arrive as error/error_description
+    // params — surface them instead of silently stripping them.
+    if (authError) {
+      clearAuthParamsFromUrl();
+      clearRecoveryFlag();
+      setError(CALLBACK_ERROR_MESSAGE);
+      setBootstrapping(false);
+      return undefined;
+    }
+
+    // A stale recovery flag must not hijack a normal login — only honor it
+    // when the URL actually looks like an auth callback.
+    const recoveryIntent = type === 'recovery' || (isCallback && isRecoveryPending());
     const inviteIntent = type === 'invite' || type === 'signup';
 
     const recoveryMessage = 'בחרו סיסמה חדשה לחשבון.';
@@ -148,7 +168,13 @@ const LoginPage = () => {
       // Code exchange may still be in flight — keep spinner briefly for callbacks
       if (isCallback && !session) {
         window.setTimeout(() => {
-          if (!cancelled && !enteredSetPassword) setBootstrapping(false);
+          if (!cancelled && !enteredSetPassword) {
+            // Callback never produced a session — the link is invalid/expired.
+            clearAuthParamsFromUrl();
+            clearRecoveryFlag();
+            setError(CALLBACK_ERROR_MESSAGE);
+            setBootstrapping(false);
+          }
         }, 2500);
         return;
       }
@@ -173,6 +199,8 @@ const LoginPage = () => {
         password,
       });
       if (signInError) throw signInError;
+      // A normal login supersedes any pending recovery intent.
+      clearRecoveryFlag();
       await navigateAfterAuth(navigate, location, data.user.id);
     } catch (err) {
       setError(friendlyError(err));
@@ -237,6 +265,8 @@ const LoginPage = () => {
   };
 
   const switchMode = (next) => {
+    // Leaving reset mode abandons the recovery intent.
+    if (next === 'login') clearRecoveryFlag();
     setMode(next);
     setError(null);
     setInfo(null);

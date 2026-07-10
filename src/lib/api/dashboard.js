@@ -5,7 +5,7 @@ export async function getDashboardData(fromDate, toDate) {
   const [appointments, staffCount] = await Promise.all([
     supabase
       .from('appointments')
-      .select('*, customers(first_name, last_name), appointment_items(*, service_types(name), users(first_name, last_name))')
+      .select('*, customers(first_name, last_name, phone), appointment_items(*, service_types(name), users(first_name, last_name))')
       .gte('visit_date', fromDate)
       .lte('visit_date', toDate)
       .neq('status', 'Cancelled')

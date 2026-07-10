@@ -3,9 +3,18 @@ import {
   toDateString,
   todayString,
   addDaysString,
+  jerusalemTodayString,
+  jerusalemAddDaysString,
   toTimeDisplay,
   formatHebrewDate,
   formatDuration,
+  weekdayIndex,
+  endOfWeekString,
+  startOfNextWeekString,
+  endOfMonthString,
+  startOfNextMonthString,
+  endOfNextMonthString,
+  datesInRange,
 } from './dates';
 
 afterEach(() => {
@@ -52,6 +61,44 @@ describe('addDaysString', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 11, 30, 12, 0, 0)); // 2026-12-30
     expect(addDaysString(3)).toBe('2027-01-02');
+  });
+});
+
+describe('jerusalemTodayString', () => {
+  it('returns YYYY-MM-DD format', () => {
+    expect(jerusalemTodayString()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("reports the salon's calendar day, not UTC", () => {
+    // 22:30 UTC on Jul 9 is already 01:30 on Jul 10 in Asia/Jerusalem (UTC+3)
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-09T22:30:00Z'));
+    expect(jerusalemTodayString()).toBe('2026-07-10');
+  });
+
+  it('matches the Jerusalem day during Israeli winter (UTC+2)', () => {
+    // 23:00 UTC on Jan 5 is 01:00 on Jan 6 in Jerusalem
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-05T23:00:00Z'));
+    expect(jerusalemTodayString()).toBe('2026-01-06');
+  });
+});
+
+describe('jerusalemAddDaysString', () => {
+  it('adds days to the Jerusalem calendar day and rolls over month boundaries', () => {
+    // Noon UTC on Jun 30 is Jun 30 in Jerusalem too
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T12:00:00Z'));
+    expect(jerusalemAddDaysString(0)).toBe('2026-06-30');
+    expect(jerusalemAddDaysString(1)).toBe('2026-07-01');
+    expect(jerusalemAddDaysString(60)).toBe('2026-08-29');
+  });
+
+  it('starts counting from the Jerusalem day even when UTC lags behind', () => {
+    // 22:30 UTC Jul 9 = Jul 10 in Jerusalem, so +1 day is Jul 11
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-09T22:30:00Z'));
+    expect(jerusalemAddDaysString(1)).toBe('2026-07-11');
   });
 });
 
@@ -103,5 +150,67 @@ describe('formatDuration', () => {
 
   it('formats multiple hours with minutes', () => {
     expect(formatDuration(135)).toBe('2 שעות ו-15 דקות');
+  });
+});
+
+describe('weekdayIndex', () => {
+  it('returns 0 for Sunday through 6 for Saturday', () => {
+    // 2026-07-05 is Sunday
+    expect(weekdayIndex('2026-07-05')).toBe(0);
+    expect(weekdayIndex('2026-07-06')).toBe(1);
+    expect(weekdayIndex('2026-07-11')).toBe(6);
+  });
+});
+
+describe('endOfWeekString / startOfNextWeekString', () => {
+  it('ends the Israel week on Saturday', () => {
+    expect(endOfWeekString('2026-07-08')).toBe('2026-07-11'); // Wed → Sat
+    expect(endOfWeekString('2026-07-05')).toBe('2026-07-11'); // Sun → Sat
+    expect(endOfWeekString('2026-07-11')).toBe('2026-07-11'); // Sat → Sat
+  });
+
+  it('starts the next week on Sunday', () => {
+    expect(startOfNextWeekString('2026-07-08')).toBe('2026-07-12');
+    expect(startOfNextWeekString('2026-07-11')).toBe('2026-07-12');
+    expect(startOfNextWeekString('2026-07-05')).toBe('2026-07-12');
+  });
+});
+
+describe('month boundary helpers', () => {
+  it('returns the last day of the current month', () => {
+    expect(endOfMonthString('2026-07-10')).toBe('2026-07-31');
+    expect(endOfMonthString('2026-02-01')).toBe('2026-02-28');
+  });
+
+  it('returns the first and last day of the next month', () => {
+    expect(startOfNextMonthString('2026-07-10')).toBe('2026-08-01');
+    expect(endOfNextMonthString('2026-07-10')).toBe('2026-08-31');
+  });
+
+  it('rolls the next-month range over December into January of the next year', () => {
+    expect(startOfNextMonthString('2026-12-15')).toBe('2027-01-01');
+    expect(endOfNextMonthString('2026-12-15')).toBe('2027-01-31');
+    expect(
+      datesInRange(startOfNextMonthString('2026-12-15'), endOfNextMonthString('2026-12-15'))
+    ).toHaveLength(31);
+  });
+});
+
+describe('datesInRange', () => {
+  it('lists inclusive YYYY-MM-DD dates', () => {
+    expect(datesInRange('2026-07-08', '2026-07-11')).toEqual([
+      '2026-07-08',
+      '2026-07-09',
+      '2026-07-10',
+      '2026-07-11',
+    ]);
+  });
+
+  it('returns a single day when start equals end', () => {
+    expect(datesInRange('2026-07-08', '2026-07-08')).toEqual(['2026-07-08']);
+  });
+
+  it('returns an empty list when start is after end', () => {
+    expect(datesInRange('2026-07-11', '2026-07-08')).toEqual([]);
   });
 });

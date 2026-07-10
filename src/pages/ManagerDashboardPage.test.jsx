@@ -1,12 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ManagerDashboardPage from './ManagerDashboardPage';
-import { getDashboardData, cancelAppointment } from '../lib/api';
+import { getDashboardData, cancelAppointment, unassignShift } from '../lib/api';
 import { todayString, addDaysString } from '../lib/dates';
 
 vi.mock('../lib/api', () => ({
   getDashboardData: vi.fn(),
   cancelAppointment: vi.fn(),
+  unassignShift: vi.fn(),
 }));
 
 const buildAppointments = () => {
@@ -17,7 +18,7 @@ const buildAppointments = () => {
       id: 'apt-1',
       visit_date: today,
       status: 'Confirmed',
-      customers: { first_name: 'רות', last_name: 'מזרחי' },
+      customers: { first_name: 'רות', last_name: 'מזרחי', phone: '050-1234567' },
       appointment_items: [
         {
           id: 'item-1',
@@ -91,6 +92,14 @@ describe('ManagerDashboardPage', () => {
     expect(screen.getByText('ע"י דנה')).toBeInTheDocument();
     // The unassigned item is flagged
     expect(screen.getByText('טרם שובץ')).toBeInTheDocument();
+  });
+
+  it('renders the customer phone as a clickable tel: link', async () => {
+    render(<ManagerDashboardPage />);
+    await screen.findByText(/לקוח\/ה: רות מזרחי/);
+
+    const phoneLink = screen.getByRole('link', { name: /050-1234567/ });
+    expect(phoneLink).toHaveAttribute('href', 'tel:050-1234567');
   });
 
   it('lists future appointments in the upcoming-days section', async () => {
@@ -186,6 +195,66 @@ describe('ManagerDashboardPage', () => {
       });
       expect(await screen.findByText('התור בוטל והשעות שוחררו.')).toBeInTheDocument();
       expect(screen.queryByText(/יעל כהן/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('unassigning an item', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('unassigns after confirmation and marks the item unassigned', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      unassignShift.mockResolvedValue({ item_id: 'item-1', user_id: null });
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/לקוח\/ה: רות מזרחי/);
+      // Only the assigned item (item-1, done by דנה) shows an unassign action
+      expect(screen.getAllByRole('button', { name: /ביטול שיבוץ/ })).toHaveLength(1);
+
+      fireEvent.click(screen.getByRole('button', { name: /ביטול שיבוץ/ }));
+
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('דנה'));
+      await waitFor(() => {
+        expect(unassignShift).toHaveBeenCalledWith('item-1');
+      });
+      expect(
+        await screen.findByText('השיבוץ בוטל והטיפול ממתין לשיבוץ מחדש.')
+      ).toBeInTheDocument();
+      // Both items are now unassigned and no unassign action remains
+      expect(screen.getAllByText('טרם שובץ')).toHaveLength(2);
+      expect(screen.queryByText('ע"י דנה')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /ביטול שיבוץ/ })).not.toBeInTheDocument();
+    });
+
+    it('does not unassign when the confirmation is dismissed', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/לקוח\/ה: רות מזרחי/);
+
+      fireEvent.click(screen.getByRole('button', { name: /ביטול שיבוץ/ }));
+
+      expect(unassignShift).not.toHaveBeenCalled();
+      expect(screen.getByText('ע"י דנה')).toBeInTheDocument();
+    });
+
+    it('surfaces a friendly error and refetches when the unassign fails', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      unassignShift.mockRejectedValue(new Error('CANNOT_UNASSIGN_PAST'));
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/לקוח\/ה: רות מזרחי/);
+      getDashboardData.mockClear();
+
+      fireEvent.click(screen.getByRole('button', { name: /ביטול שיבוץ/ }));
+
+      expect(
+        await screen.findByText('לא ניתן לבטל שיבוץ של טיפול שכבר עבר.')
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(getDashboardData).toHaveBeenCalledTimes(1);
+      });
     });
   });
 });
