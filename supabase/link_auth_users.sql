@@ -35,35 +35,26 @@ left join public.users u on u.id = a.id
 where u.id is null;
 
 -- ------------------------------------------------------------
--- 2) EDIT ME — set display names
+-- 2) Demo display names (admindemo / userdemo)
 -- ------------------------------------------------------------
 update public.users
 set first_name = 'דנה', last_name = 'לוי'
-where id = (select id from auth.users where email = 'admin@example.com');
+where id = (select id from auth.users where email = 'admindemo@demo.internal');
 
 update public.users
 set first_name = 'יוסי', last_name = 'כהן'
-where id = (select id from auth.users where email = 'employee@example.com');
-
--- Optional third employee:
--- update public.users
--- set first_name = 'מיכל', last_name = 'ברק'
--- where id = (select id from auth.users where email = 'employee2@example.com');
+where id = (select id from auth.users where email = 'userdemo@demo.internal');
 
 -- ------------------------------------------------------------
--- 3) EDIT ME — promote Admin (exactly one is enough to start)
+-- 3) Promote Admin
 -- ------------------------------------------------------------
 update public.users
 set role = 'Admin'
-where id = (select id from auth.users where email = 'admin@example.com');
+where id = (select id from auth.users where email = 'admindemo@demo.internal');
 
--- Everyone else stays Employee (optional hard reset):
--- update public.users
--- set role = 'Employee'
--- where id in (
---   select id from auth.users
---   where email in ('employee@example.com', 'employee2@example.com')
--- );
+update public.users
+set role = 'Employee'
+where id = (select id from auth.users where email = 'userdemo@demo.internal');
 
 -- ------------------------------------------------------------
 -- 4) Verify

@@ -20,9 +20,9 @@
 | ניהול / ביטול תור | https://fp-shifter.vercel.app/book/manage |
 | כניסת צוות | https://fp-shifter.vercel.app/login |
 
-**חשבונות דמו לצוות (אם רלוונטי):**  
-אימייל מנהל: _______________ סיסמה: _______________  
-אימייל עובד: _______________ סיסמה: _______________
+**חשבונות דמו לצוות:**  
+אימייל מנהל: `admindemo@demo.internal` סיסמה: `adminadminadmin`  
+אימייל עובד: `userdemo@demo.internal` סיסמה: `useruseruser`
 
 ## צ׳קליסט לפני שליחה
 
