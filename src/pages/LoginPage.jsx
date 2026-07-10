@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { updateStaffProfile } from '../lib/api';
 import { friendlyError } from '../lib/errors';
 import { KeyRound } from 'lucide-react';
 import PageContainer from '../components/PageContainer/PageContainer';
@@ -39,12 +40,25 @@ async function navigateAfterAuth(navigate, location, userId) {
   navigate(from || home, { replace: true });
 }
 
+async function loadNameDraft(userId, setFirstName, setLastName) {
+  const { data } = await supabase
+    .from('users')
+    .select('first_name, last_name')
+    .eq('id', userId)
+    .single();
+  if (!data) return;
+  setFirstName(data.first_name === 'New' ? '' : data.first_name || '');
+  setLastName(data.last_name === 'User' ? '' : data.last_name || '');
+}
+
 // Staff login only. There is no public sign-up: employees are invited by an
 // Admin (Supabase Dashboard -> Authentication -> Invite user).
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [mode, setMode] = useState('login'); // 'login' | 'reset' | 'setPassword'
   const [loading, setLoading] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(true);
@@ -56,43 +70,35 @@ const LoginPage = () => {
   useEffect(() => {
     let cancelled = false;
 
-    const enterSetPassword = (message) => {
+    const enterSetPassword = async (message, session) => {
       if (cancelled) return;
       setMode('setPassword');
       setError(null);
       setInfo(message);
       clearAuthParamsFromUrl();
+      if (session?.user?.id) {
+        await loadNameDraft(session.user.id, setFirstName, setLastName);
+      }
     };
 
     const linkType = authLinkTypeFromUrl();
-    if (linkType === 'invite' || linkType === 'signup') {
-      enterSetPassword('ההזמנה אושרה. בחרו סיסמה כדי להשלים את ההרשמה.');
-    } else if (linkType === 'recovery') {
-      enterSetPassword('בחרו סיסמה חדשה לחשבון.');
-    }
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
-        enterSetPassword('בחרו סיסמה חדשה לחשבון.');
+        enterSetPassword('בחרו סיסמה חדשה לחשבון.', session);
       } else if (event === 'SIGNED_IN' && (linkType === 'invite' || linkType === 'signup')) {
-        enterSetPassword('ההזמנה אושרה. בחרו סיסמה כדי להשלים את ההרשמה.');
+        enterSetPassword('ההזמנה אושרה. השלימו שם וסיסמה כדי להיכנס.', session);
       }
     });
 
-    // Invite/recovery may already have created a session before this mount.
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (cancelled) return;
-      if (
-        session &&
-        (linkType === 'invite' || linkType === 'signup' || linkType === 'recovery')
-      ) {
-        enterSetPassword(
-          linkType === 'recovery'
-            ? 'בחרו סיסמה חדשה לחשבון.'
-            : 'ההזמנה אושרה. בחרו סיסמה כדי להשלים את ההרשמה.'
-        );
+      if (linkType === 'invite' || linkType === 'signup') {
+        await enterSetPassword('ההזמנה אושרה. השלימו שם וסיסמה כדי להיכנס.', session);
+      } else if (linkType === 'recovery') {
+        await enterSetPassword('בחרו סיסמה חדשה לחשבון.', session);
       }
       setBootstrapping(false);
     });
@@ -147,6 +153,12 @@ const LoginPage = () => {
     setError(null);
     setInfo(null);
 
+    const first = firstName.trim();
+    const last = lastName.trim();
+    if (!first || !last) {
+      setError('נא להזין שם פרטי ושם משפחה.');
+      return;
+    }
     if (password.length < 6) {
       setError('הסיסמה חייבת להכיל לפחות 6 תווים.');
       return;
@@ -160,10 +172,11 @@ const LoginPage = () => {
     try {
       const { data, error: updateError } = await supabase.auth.updateUser({ password });
       if (updateError) throw updateError;
+      await updateStaffProfile(data.user.id, { first_name: first, last_name: last });
       clearAuthParamsFromUrl();
       await navigateAfterAuth(navigate, location, data.user.id);
     } catch (err) {
-      setError(friendlyError(err, 'שגיאה בשמירת הסיסמה. נסו שוב או בקשו הזמנה חדשה.'));
+      setError(friendlyError(err, 'שגיאה בשמירת הפרטים. נסו שוב או בקשו הזמנה חדשה.'));
     } finally {
       setLoading(false);
     }
@@ -178,7 +191,7 @@ const LoginPage = () => {
   };
 
   const title =
-    mode === 'setPassword' ? 'הגדרת סיסמה' : mode === 'reset' ? 'איפוס סיסמה' : 'כניסת צוות';
+    mode === 'setPassword' ? 'השלמת הרשמה' : mode === 'reset' ? 'איפוס סיסמה' : 'כניסת צוות';
 
   if (bootstrapping) {
     return (
@@ -257,8 +270,30 @@ const LoginPage = () => {
       {mode === 'setPassword' && (
         <form onSubmit={handleSetPassword} className="login-form">
           <p className="reset-hint">
-            זו ההשלמה של הזמנת הצוות / איפוס הסיסמה. אחרי השמירה תוכלו להתחבר עם הסיסמה החדשה.
+            הזינו את שמכם ובחרו סיסמה. אחרי השמירה תוכלו להתחבר עם האימייל והסיסמה.
           </p>
+          <div className="input-group">
+            <label htmlFor="first-name">שם פרטי</label>
+            <input
+              id="first-name"
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="לדוגמה: דנה"
+              autoComplete="given-name"
+            />
+          </div>
+          <div className="input-group">
+            <label htmlFor="last-name">שם משפחה</label>
+            <input
+              id="last-name"
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="לדוגמה: לוי"
+              autoComplete="family-name"
+            />
+          </div>
           <div className="input-group">
             <label htmlFor="new-password">סיסמה חדשה</label>
             <input
@@ -286,7 +321,7 @@ const LoginPage = () => {
             />
           </div>
           <button type="submit" className="submit-btn" disabled={loading}>
-            {loading ? <LoadingSpinner text="שומר..." inline={true} /> : 'שמור סיסמה והמשך'}
+            {loading ? <LoadingSpinner text="שומר..." inline={true} /> : 'שמור והמשך'}
           </button>
         </form>
       )}
@@ -306,7 +341,7 @@ const LoginPage = () => {
       )}
 
       <p className="toggle-auth invite-note">
-        חשבונות צוות נפתחים בהזמנה בלבד. אחרי ההזמנה יש להגדיר סיסמה דרך הקישור במייל,
+        חשבונות צוות נפתחים בהזמנה בלבד. אחרי ההזמנה יש להגדיר שם וסיסמה דרך הקישור במייל,
         ואז להתחבר כאן עם האימייל והסיסמה.
       </p>
     </PageContainer>

@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import LoginPage from './LoginPage';
 import { supabase } from '../lib/supabase';
+import { updateStaffProfile } from '../lib/api';
 
 const { mockNavigate, mockUseLocation } = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
@@ -29,6 +30,10 @@ vi.mock('../lib/supabase', () => ({
     },
     from: vi.fn(),
   },
+}));
+
+vi.mock('../lib/api', () => ({
+  updateStaffProfile: vi.fn(),
 }));
 
 function mockProfileFetch(profile) {
@@ -82,7 +87,7 @@ describe('LoginPage', () => {
 
     expect(screen.getByLabelText('אימייל')).toBeInTheDocument();
     expect(screen.getByLabelText('סיסמה')).toBeInTheDocument();
-    expect(screen.queryByText(/הרשמה/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'השלמת הרשמה' })).not.toBeInTheDocument();
     expect(
       screen.getByText(/חשבונות צוות נפתחים בהזמנה בלבד/)
     ).toBeInTheDocument();
@@ -214,24 +219,28 @@ describe('LoginPage', () => {
     supabase.auth.getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-1' } } },
     });
+    mockProfileFetch({ first_name: 'New', last_name: 'User', role: 'Employee' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
 
-    expect(await screen.findByRole('heading', { name: 'הגדרת סיסמה' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'השלמת הרשמה' })).toBeInTheDocument();
     expect(screen.getByText(/ההזמנה אושרה/)).toBeInTheDocument();
+    expect(screen.getByLabelText('שם פרטי')).toBeInTheDocument();
+    expect(screen.getByLabelText('שם משפחה')).toBeInTheDocument();
     expect(screen.getByLabelText('סיסמה חדשה')).toBeInTheDocument();
   });
 
   it('opens set-password mode on PASSWORD_RECOVERY auth event', async () => {
+    mockProfileFetch({ first_name: 'דנה', last_name: 'לוי', role: 'Employee' });
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
     await waitForLoginForm();
 
     authChangeCb('PASSWORD_RECOVERY', { user: { id: 'user-1' } });
 
-    expect(await screen.findByRole('heading', { name: 'הגדרת סיסמה' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'השלמת הרשמה' })).toBeInTheDocument();
   });
 
-  it('saves a new password via updateUser and navigates home', async () => {
+  it('saves name and password via updateUser then navigates home', async () => {
     window.history.replaceState({}, '', '/login#type=invite');
     supabase.auth.getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-1' } } },
@@ -240,21 +249,36 @@ describe('LoginPage', () => {
       data: { user: { id: 'user-1' } },
       error: null,
     });
-    mockProfileFetch({ role: 'Admin' });
+    updateStaffProfile.mockResolvedValue({
+      id: 'user-1',
+      first_name: 'דנה',
+      last_name: 'לוי',
+    });
+    mockProfileFetch({ first_name: 'New', last_name: 'User', role: 'Admin' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
-    await screen.findByRole('heading', { name: 'הגדרת סיסמה' });
+    await screen.findByRole('heading', { name: 'השלמת הרשמה' });
 
+    fireEvent.change(screen.getByLabelText('שם פרטי'), {
+      target: { value: 'דנה' },
+    });
+    fireEvent.change(screen.getByLabelText('שם משפחה'), {
+      target: { value: 'לוי' },
+    });
     fireEvent.change(screen.getByLabelText('סיסמה חדשה'), {
       target: { value: 'newpass1' },
     });
     fireEvent.change(screen.getByLabelText('אימות סיסמה'), {
       target: { value: 'newpass1' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'שמור סיסמה והמשך' }));
+    fireEvent.click(screen.getByRole('button', { name: 'שמור והמשך' }));
 
     await waitFor(() => {
       expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: 'newpass1' });
+    });
+    expect(updateStaffProfile).toHaveBeenCalledWith('user-1', {
+      first_name: 'דנה',
+      last_name: 'לוי',
     });
     expect(mockNavigate).toHaveBeenCalledWith('/admin/dashboard', { replace: true });
   });
@@ -264,19 +288,49 @@ describe('LoginPage', () => {
     supabase.auth.getSession.mockResolvedValue({
       data: { session: { user: { id: 'user-1' } } },
     });
+    mockProfileFetch({ first_name: 'דנה', last_name: 'לוי', role: 'Employee' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
-    await screen.findByRole('heading', { name: 'הגדרת סיסמה' });
+    await screen.findByRole('heading', { name: 'השלמת הרשמה' });
 
+    fireEvent.change(screen.getByLabelText('שם פרטי'), {
+      target: { value: 'דנה' },
+    });
+    fireEvent.change(screen.getByLabelText('שם משפחה'), {
+      target: { value: 'לוי' },
+    });
     fireEvent.change(screen.getByLabelText('סיסמה חדשה'), {
       target: { value: 'newpass1' },
     });
     fireEvent.change(screen.getByLabelText('אימות סיסמה'), {
       target: { value: 'other' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'שמור סיסמה והמשך' }));
+    fireEvent.click(screen.getByRole('button', { name: 'שמור והמשך' }));
 
     expect(await screen.findByText('הסיסמאות אינן תואמות.')).toBeInTheDocument();
+    expect(supabase.auth.updateUser).not.toHaveBeenCalled();
+    expect(updateStaffProfile).not.toHaveBeenCalled();
+  });
+
+  it('requires a name before saving the invite password', async () => {
+    window.history.replaceState({}, '', '/login#type=invite');
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    mockProfileFetch({ first_name: 'New', last_name: 'User', role: 'Employee' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'השלמת הרשמה' });
+
+    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), {
+      target: { value: 'newpass1' },
+    });
+    fireEvent.change(screen.getByLabelText('אימות סיסמה'), {
+      target: { value: 'newpass1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'שמור והמשך' }));
+
+    expect(await screen.findByText('נא להזין שם פרטי ושם משפחה.')).toBeInTheDocument();
     expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
 });

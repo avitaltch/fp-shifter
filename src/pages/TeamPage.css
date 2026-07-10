@@ -31,6 +31,51 @@
   font-weight: 600;
 }
 
+.team-page .icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 36px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.team-page .icon-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #2563eb;
+}
+
+.team-page .icon-btn.save:hover:not(:disabled) {
+  color: #059669;
+}
+
+.team-page .icon-btn.cancel:hover:not(:disabled) {
+  color: #dc2626;
+}
+
+.team-page .name-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.team-page .name-edit input {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 1rem;
+  min-height: 40px;
+}
+
 .team-page .role-select {
   border: 1px solid #e5e7eb;
   border-radius: 8px;

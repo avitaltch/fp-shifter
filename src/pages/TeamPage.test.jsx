@@ -7,6 +7,7 @@ import {
   addSkill,
   removeSkill,
   setUserRole,
+  updateStaffProfile,
 } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
@@ -15,7 +16,10 @@ vi.mock('../lib/api', () => ({
   addSkill: vi.fn(),
   removeSkill: vi.fn(),
   setUserRole: vi.fn(),
+  updateStaffProfile: vi.fn(),
 }));
+
+const mockRetryProfile = vi.fn();
 
 // The logged-in admin is admin-1
 vi.mock('../context/AuthContext', () => ({
@@ -25,6 +29,7 @@ vi.mock('../context/AuthContext', () => ({
     role: 'Admin',
     loading: false,
     signOut: vi.fn(),
+    retryProfile: mockRetryProfile,
   }),
 }));
 
@@ -177,5 +182,69 @@ describe('TeamPage', () => {
     render(<TeamPage />);
 
     expect(await screen.findByText('שגיאה בטעינת נתוני הצוות.')).toBeInTheDocument();
+  });
+
+  it('lets an admin edit another employee name', async () => {
+    updateStaffProfile.mockResolvedValue({
+      id: 'emp-2',
+      first_name: 'יוסף',
+      last_name: 'כהן',
+    });
+    render(<TeamPage />);
+    await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+    fireEvent.click(screen.getByLabelText('ערוך שם של יוסי'));
+    fireEvent.change(screen.getByLabelText('שם פרטי של יוסי'), {
+      target: { value: 'יוסף' },
+    });
+    fireEvent.click(screen.getByLabelText('שמור שם'));
+
+    await waitFor(() => {
+      expect(updateStaffProfile).toHaveBeenCalledWith('emp-2', {
+        first_name: 'יוסף',
+        last_name: 'כהן',
+      });
+    });
+    expect(await screen.findByText('השם עודכן בהצלחה.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'יוסף כהן' })).toBeInTheDocument();
+    expect(mockRetryProfile).not.toHaveBeenCalled();
+  });
+
+  it('refreshes the auth profile when the admin renames themselves', async () => {
+    updateStaffProfile.mockResolvedValue({
+      id: 'admin-1',
+      first_name: 'דנית',
+      last_name: 'לוי',
+    });
+    render(<TeamPage />);
+    await screen.findByRole('heading', { name: 'דנה לוי' });
+
+    fireEvent.click(screen.getByLabelText('ערוך שם של דנה'));
+    fireEvent.change(screen.getByLabelText('שם פרטי של דנה'), {
+      target: { value: 'דנית' },
+    });
+    fireEvent.click(screen.getByLabelText('שמור שם'));
+
+    await waitFor(() => {
+      expect(updateStaffProfile).toHaveBeenCalledWith('admin-1', {
+        first_name: 'דנית',
+        last_name: 'לוי',
+      });
+    });
+    expect(mockRetryProfile).toHaveBeenCalled();
+  });
+
+  it('blocks saving an empty name without calling the api', async () => {
+    render(<TeamPage />);
+    await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+    fireEvent.click(screen.getByLabelText('ערוך שם של יוסי'));
+    fireEvent.change(screen.getByLabelText('שם פרטי של יוסי'), {
+      target: { value: '   ' },
+    });
+    fireEvent.click(screen.getByLabelText('שמור שם'));
+
+    expect(await screen.findByText('נא להזין שם פרטי ושם משפחה.')).toBeInTheDocument();
+    expect(updateStaffProfile).not.toHaveBeenCalled();
   });
 });

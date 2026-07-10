@@ -25,6 +25,7 @@ import {
   addSkill,
   removeSkill,
   setUserRole,
+  updateStaffProfile,
 } from './api';
 
 vi.mock('./supabase', () => ({
@@ -580,6 +581,25 @@ describe('team api', () => {
     supabase.rpc.mockResolvedValue({ data: null, error: new Error('CANNOT_CHANGE_OWN_ROLE') });
 
     await expect(setUserRole('me', 'Employee')).rejects.toThrow('CANNOT_CHANGE_OWN_ROLE');
+  });
+
+  it('updateStaffProfile updates allowlisted name fields', async () => {
+    const row = { id: 'emp-1', first_name: 'דנה', last_name: 'לוי' };
+    const query = createQuery({ data: row, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await expect(
+      updateStaffProfile('emp-1', { first_name: ' דנה ', last_name: 'לוי', role: 'Admin' })
+    ).resolves.toEqual(row);
+    expect(query.update).toHaveBeenCalledWith({ first_name: 'דנה', last_name: 'לוי' });
+    expect(query.eq).toHaveBeenCalledWith('id', 'emp-1');
+  });
+
+  it('updateStaffProfile rejects empty names', async () => {
+    await expect(
+      updateStaffProfile('emp-1', { first_name: '  ', last_name: 'לוי' })
+    ).rejects.toThrow('INVALID_NAME');
+    expect(supabase.from).not.toHaveBeenCalled();
   });
 });
 

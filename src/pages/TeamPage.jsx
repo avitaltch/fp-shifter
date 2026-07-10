@@ -1,7 +1,14 @@
-import { useCallback } from 'react';
-import { Briefcase, ShieldCheck, UserRound } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Briefcase, ShieldCheck, UserRound, Pencil, Check, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { listStaffWithSkills, listServices, addSkill, removeSkill, setUserRole } from '../lib/api';
+import {
+  listStaffWithSkills,
+  listServices,
+  addSkill,
+  removeSkill,
+  setUserRole,
+  updateStaffProfile,
+} from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
 import PageContainer from '../components/PageContainer/PageContainer';
@@ -11,11 +18,12 @@ import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './TeamPage.css';
 
-// Admin page: manage each staff member's role and skills (which services
-// they can perform). Skills drive both the customer slot engine and the
-// assignment page. New employees are invited from the Supabase dashboard.
+// Admin page: manage each staff member's name, role and skills.
+// New employees are invited from the Supabase dashboard (default name "New User").
 const TeamPage = () => {
-  const { session } = useAuth();
+  const { session, retryProfile } = useAuth();
+  const [editingId, setEditingId] = useState(null);
+  const [nameDraft, setNameDraft] = useState({ first_name: '', last_name: '' });
 
   const fetchTeam = useCallback(async () => {
     const [{ staff, skills }, services] = await Promise.all([
@@ -32,6 +40,50 @@ const TeamPage = () => {
   const staff = data?.staff ?? [];
   const skills = data?.skills ?? [];
   const services = data?.services ?? [];
+
+  const startEditName = (employee) => {
+    setEditingId(employee.id);
+    setNameDraft({
+      first_name: employee.first_name === 'New' ? '' : employee.first_name,
+      last_name: employee.last_name === 'User' ? '' : employee.last_name,
+    });
+    setMessage(null);
+  };
+
+  const cancelEditName = () => {
+    setEditingId(null);
+    setNameDraft({ first_name: '', last_name: '' });
+  };
+
+  const saveName = async (employee) => {
+    const first = nameDraft.first_name.trim();
+    const last = nameDraft.last_name.trim();
+    if (!first || !last) {
+      setMessage({ type: 'error', text: 'נא להזין שם פרטי ושם משפחה.' });
+      return;
+    }
+
+    const { ok, result } = await run(
+      `name:${employee.id}`,
+      () => updateStaffProfile(employee.id, { first_name: first, last_name: last }),
+      {
+        success: 'השם עודכן בהצלחה.',
+        errorFallback: 'שגיאה בעדכון השם.',
+      }
+    );
+    if (ok) {
+      setData((prev) => ({
+        ...prev,
+        staff: prev.staff.map((u) =>
+          u.id === employee.id
+            ? { ...u, first_name: result.first_name, last_name: result.last_name }
+            : u
+        ),
+      }));
+      setEditingId(null);
+      if (employee.id === session?.user?.id) retryProfile?.();
+    }
+  };
 
   const toggleSkill = async (employee, service) => {
     const existing = skills.find(
@@ -82,7 +134,7 @@ const TeamPage = () => {
       <PageHeader
         icon={Briefcase}
         title="ניהול צוות"
-        subtitle="ניהול תפקידים ומיומנויות. עובדים חדשים מצטרפים בהזמנה בלבד (Supabase → Authentication → Invite user)."
+        subtitle="ניהול שמות, תפקידים ומיומנויות. עובדים חדשים מצטרפים בהזמנה בלבד (Supabase → Authentication → Invite user)."
       />
 
       {loading && <LoadingSpinner text="טוען צוות..." />}
@@ -98,10 +150,53 @@ const TeamPage = () => {
           {staff.map((employee) => (
             <div key={employee.id} className="card team-card">
               <div className="team-member">
-                <div className="member-name">
-                  {employee.role === 'Admin' ? <ShieldCheck size={20} /> : <UserRound size={20} />}
-                  <h3>{employee.first_name} {employee.last_name}</h3>
-                </div>
+                {editingId === employee.id ? (
+                  <div className="name-edit">
+                    <input
+                      aria-label={`שם פרטי של ${employee.first_name}`}
+                      value={nameDraft.first_name}
+                      onChange={(e) => setNameDraft((d) => ({ ...d, first_name: e.target.value }))}
+                      placeholder="שם פרטי"
+                    />
+                    <input
+                      aria-label={`שם משפחה של ${employee.first_name}`}
+                      value={nameDraft.last_name}
+                      onChange={(e) => setNameDraft((d) => ({ ...d, last_name: e.target.value }))}
+                      placeholder="שם משפחה"
+                    />
+                    <button
+                      type="button"
+                      className="icon-btn save"
+                      aria-label="שמור שם"
+                      onClick={() => saveName(employee)}
+                      disabled={busyKey === `name:${employee.id}`}
+                    >
+                      <Check size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn cancel"
+                      aria-label="בטל עריכת שם"
+                      onClick={cancelEditName}
+                      disabled={busyKey === `name:${employee.id}`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="member-name">
+                    {employee.role === 'Admin' ? <ShieldCheck size={20} /> : <UserRound size={20} />}
+                    <h3>{employee.first_name} {employee.last_name}</h3>
+                    <button
+                      type="button"
+                      className="icon-btn edit-name"
+                      aria-label={`ערוך שם של ${employee.first_name}`}
+                      onClick={() => startEditName(employee)}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                  </div>
+                )}
                 <select
                   className="role-select"
                   value={employee.role}
