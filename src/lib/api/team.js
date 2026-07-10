@@ -14,6 +14,23 @@ export async function listStaffWithSkills() {
   return { staff, skills };
 }
 
+// Name (and later phone) only — never role. Role changes go through admin_set_user_role.
+const PROFILE_EDITABLE_FIELDS = ['first_name', 'last_name', 'phone'];
+
+export async function updateStaffProfile(userId, fields) {
+  const safe = Object.fromEntries(
+    Object.entries(fields).filter(([key]) => PROFILE_EDITABLE_FIELDS.includes(key))
+  );
+  if (safe.first_name !== undefined) safe.first_name = String(safe.first_name).trim();
+  if (safe.last_name !== undefined) safe.last_name = String(safe.last_name).trim();
+  if (safe.first_name === '' || safe.last_name === '') {
+    throw new Error('INVALID_NAME');
+  }
+  return unwrap(
+    await supabase.from('users').update(safe).eq('id', userId).select().single()
+  );
+}
+
 export async function addSkill(userId, serviceTypeId) {
   return unwrap(
     await supabase

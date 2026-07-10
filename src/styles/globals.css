@@ -51,6 +51,15 @@ textarea {
   font-family: inherit;
 }
 
+/* Date fields open the native calendar on click (via showPicker in JS) */
+input[type="date"] {
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
 a {
   text-decoration: none;
   color: inherit;
