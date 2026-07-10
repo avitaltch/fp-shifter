@@ -23,6 +23,16 @@ export async function addAvailability({ userId, date, startTime, endTime, notes 
   );
 }
 
+/** Bulk-insert availability rows. Each entry: { user_id, available_date, start_time, end_time }. */
+export async function addAvailabilityBulk(entries) {
+  return unwrap(
+    await supabase
+      .from('availabilities')
+      .insert(entries)
+      .select()
+  );
+}
+
 export async function deleteAvailability(id) {
   return unwrap(await supabase.from('availabilities').delete().eq('id', id).select());
 }

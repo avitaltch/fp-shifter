@@ -67,3 +67,62 @@ export function formatDuration(minutes) {
   const hours = h === 1 ? 'שעה' : `${h} שעות`;
   return m === 0 ? hours : `${hours} ו-${m} דקות`;
 }
+
+/** Parse YYYY-MM-DD as a local Date (noon avoids DST edge cases). */
+function parseLocalDate(dateString) {
+  const [y, m, d] = dateString.split('-').map(Number);
+  return new Date(y, m - 1, d, 12, 0, 0);
+}
+
+/** Weekday index for a YYYY-MM-DD string: 0=Sunday … 6=Saturday (Israel week). */
+export function weekdayIndex(dateString) {
+  return parseLocalDate(dateString).getDay();
+}
+
+/**
+ * Saturday of the Israel week that contains `from` (YYYY-MM-DD).
+ * Weeks run Sunday–Saturday.
+ */
+export function endOfWeekString(from = todayString()) {
+  const date = parseLocalDate(from);
+  date.setDate(date.getDate() + (6 - date.getDay()));
+  return toDateString(date);
+}
+
+/** Next Sunday after the week that contains `from` (YYYY-MM-DD). */
+export function startOfNextWeekString(from = todayString()) {
+  const date = parseLocalDate(from);
+  date.setDate(date.getDate() + (7 - date.getDay()));
+  return toDateString(date);
+}
+
+/** Last day of the month that contains `from` (YYYY-MM-DD). */
+export function endOfMonthString(from = todayString()) {
+  const [y, m] = from.split('-').map(Number);
+  return toDateString(new Date(y, m, 0));
+}
+
+/** First day of the month after the one that contains `from`. */
+export function startOfNextMonthString(from = todayString()) {
+  const [y, m] = from.split('-').map(Number);
+  return toDateString(new Date(y, m, 1));
+}
+
+/** Last day of the month after the one that contains `from`. */
+export function endOfNextMonthString(from = todayString()) {
+  const [y, m] = from.split('-').map(Number);
+  return toDateString(new Date(y, m + 1, 0));
+}
+
+/** Inclusive list of YYYY-MM-DD strings from start through end. */
+export function datesInRange(startStr, endStr) {
+  if (startStr > endStr) return [];
+  const dates = [];
+  const cur = parseLocalDate(startStr);
+  const end = parseLocalDate(endStr);
+  while (cur <= end) {
+    dates.push(toDateString(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}

@@ -1,12 +1,13 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import EmployeeAvailabilityPage from './EmployeeAvailabilityPage';
-import { listMyAvailability, addAvailability, deleteAvailability } from '../lib/api';
+import { listMyAvailability, addAvailability, addAvailabilityBulk, deleteAvailability } from '../lib/api';
 import { todayString, formatHebrewDate } from '../lib/dates';
 
 vi.mock('../lib/api', () => ({
   listMyAvailability: vi.fn(),
   addAvailability: vi.fn(),
+  addAvailabilityBulk: vi.fn(),
   deleteAvailability: vi.fn(),
 }));
 
@@ -38,6 +39,10 @@ describe('EmployeeAvailabilityPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listMyAvailability.mockResolvedValue([existingEntry]);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('lists the existing availability for the logged-in user from today onwards', async () => {
@@ -168,5 +173,236 @@ describe('EmployeeAvailabilityPage', () => {
       await screen.findByText('שגיאה במחיקה. ייתכן שכבר שובצו לך טיפולים בחלון זה.')
     ).toBeInTheDocument();
     expect(screen.getByText(/10:00-\s*12:00/)).toBeInTheDocument();
+  });
+
+  describe('bulk open', () => {
+    // Wednesday 2026-07-08 — this week remaining workdays (Sun–Thu default): Wed+Thu
+    const WEDNESDAY = new Date(2026, 6, 8, 12, 0, 0);
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(WEDNESDAY);
+      listMyAvailability.mockResolvedValue([]);
+    });
+
+    it('opens this week from today through Saturday, only toggled workdays', async () => {
+      addAvailabilityBulk.mockResolvedValue([
+        {
+          id: 'b1',
+          user_id: 'user-1',
+          available_date: '2026-07-08',
+          start_time: '08:00',
+          end_time: '16:00',
+        },
+        {
+          id: 'b2',
+          user_id: 'user-1',
+          available_date: '2026-07-09',
+          start_time: '08:00',
+          end_time: '16:00',
+        },
+      ]);
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalledTimes(1);
+      });
+      expect(addAvailabilityBulk).toHaveBeenCalledWith([
+        {
+          user_id: 'user-1',
+          available_date: '2026-07-08',
+          start_time: '08:00',
+          end_time: '16:00',
+        },
+        {
+          user_id: 'user-1',
+          available_date: '2026-07-09',
+          start_time: '08:00',
+          end_time: '16:00',
+        },
+      ]);
+      expect(await screen.findByText('נפתחו 2 ימים')).toBeInTheDocument();
+    });
+
+    it('excludes past days when opening this week', async () => {
+      // Sunday–Tuesday are before "today" (Wed) and must not be included
+      addAvailabilityBulk.mockResolvedValue([]);
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalled();
+      });
+      const rows = addAvailabilityBulk.mock.calls[0][0];
+      expect(rows.every((r) => r.available_date >= '2026-07-08')).toBe(true);
+      expect(rows.some((r) => r.available_date < '2026-07-08')).toBe(false);
+    });
+
+    it('opens next week Sunday through Saturday for selected workdays', async () => {
+      addAvailabilityBulk.mockImplementation(async (rows) =>
+        rows.map((r, i) => ({ id: `n${i}`, ...r }))
+      );
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע הבא' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalledTimes(1);
+      });
+      const rows = addAvailabilityBulk.mock.calls[0][0];
+      expect(rows.map((r) => r.available_date)).toEqual([
+        '2026-07-12', // Sun
+        '2026-07-13', // Mon
+        '2026-07-14', // Tue
+        '2026-07-15', // Wed
+        '2026-07-16', // Thu
+      ]);
+    });
+
+    it('filters by weekday toggles (skips Friday/Saturday by default)', async () => {
+      addAvailabilityBulk.mockImplementation(async (rows) =>
+        rows.map((r, i) => ({ id: `m${i}`, ...r }))
+      );
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את החודש' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalled();
+      });
+      const rows = addAvailabilityBulk.mock.calls[0][0];
+      // No Friday (5) or Saturday (6)
+      const hasWeekend = rows.some((r) => {
+        const day = new Date(r.available_date + 'T12:00:00').getDay();
+        return day === 5 || day === 6;
+      });
+      expect(hasWeekend).toBe(false);
+      expect(rows[0].available_date).toBe('2026-07-08');
+      expect(rows.every((r) => r.available_date <= '2026-07-31')).toBe(true);
+    });
+
+    it('skips overlapping existing entries and reports them in the success message', async () => {
+      listMyAvailability.mockResolvedValue([
+        {
+          id: 'overlap',
+          user_id: 'user-1',
+          available_date: '2026-07-08',
+          start_time: '08:00:00',
+          end_time: '16:00:00',
+        },
+      ]);
+      addAvailabilityBulk.mockResolvedValue([
+        {
+          id: 'b2',
+          user_id: 'user-1',
+          available_date: '2026-07-09',
+          start_time: '08:00',
+          end_time: '16:00',
+        },
+      ]);
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalledWith([
+          {
+            user_id: 'user-1',
+            available_date: '2026-07-09',
+            start_time: '08:00',
+            end_time: '16:00',
+          },
+        ]);
+      });
+      expect(
+        await screen.findByText('נפתחו 1 ימים (1 דולגו — קיימת זמינות חופפת)')
+      ).toBeInTheDocument();
+    });
+
+    it('shows an informative message when nothing qualifies', async () => {
+      // Turn off all workdays
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      for (const label of ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳']) {
+        const chip = screen.getByRole('button', { name: label });
+        if (chip.getAttribute('aria-pressed') === 'true') {
+          fireEvent.click(chip);
+        }
+      }
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      expect(
+        await screen.findByText(
+          'כל הימים בטווח כבר פתוחים או שאינם בימי העבודה שנבחרו.'
+        )
+      ).toBeInTheDocument();
+      expect(addAvailabilityBulk).not.toHaveBeenCalled();
+    });
+
+    it('validates start < end before bulk insert', async () => {
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.change(screen.getByLabelText(/משעה/), { target: { value: '16:00' } });
+      fireEvent.change(screen.getByLabelText(/עד שעה/), { target: { value: '08:00' } });
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע הבא' }));
+
+      expect(
+        await screen.findByText('שעת הסיום חייבת להיות אחרי שעת ההתחלה.')
+      ).toBeInTheDocument();
+      expect(addAvailabilityBulk).not.toHaveBeenCalled();
+    });
+
+    it('opens next month from the 1st through the last day', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      addAvailabilityBulk.mockImplementation(async (rows) =>
+        rows.map((r, i) => ({ id: `nm${i}`, ...r }))
+      );
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את החודש הבא' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalled();
+      });
+      const rows = addAvailabilityBulk.mock.calls[0][0];
+      expect(rows[0].available_date).toBe('2026-08-02'); // Aug 1 2026 is Saturday (off)
+      expect(rows.every((r) => r.available_date.startsWith('2026-08-'))).toBe(true);
+      expect(rows.at(-1).available_date).toBe('2026-08-31'); // Monday
+      expect(confirmSpy).toHaveBeenCalled(); // >20 Sun–Thu days in August
+      confirmSpy.mockRestore();
+    });
+
+    it('asks for confirmation when more than 20 rows would be inserted', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      addAvailabilityBulk.mockResolvedValue([]);
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      // Enable Friday+Saturday so next month has many days
+      fireEvent.click(screen.getByRole('button', { name: 'ו׳' }));
+      fireEvent.click(screen.getByRole('button', { name: 'ש׳' }));
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את החודש הבא' }));
+
+      await waitFor(() => {
+        expect(confirmSpy).toHaveBeenCalled();
+      });
+      expect(addAvailabilityBulk).not.toHaveBeenCalled();
+      confirmSpy.mockRestore();
+    });
   });
 });

@@ -8,6 +8,13 @@ import {
   toTimeDisplay,
   formatHebrewDate,
   formatDuration,
+  weekdayIndex,
+  endOfWeekString,
+  startOfNextWeekString,
+  endOfMonthString,
+  startOfNextMonthString,
+  endOfNextMonthString,
+  datesInRange,
 } from './dates';
 
 afterEach(() => {
@@ -143,5 +150,61 @@ describe('formatDuration', () => {
 
   it('formats multiple hours with minutes', () => {
     expect(formatDuration(135)).toBe('2 שעות ו-15 דקות');
+  });
+});
+
+describe('weekdayIndex', () => {
+  it('returns 0 for Sunday through 6 for Saturday', () => {
+    // 2026-07-05 is Sunday
+    expect(weekdayIndex('2026-07-05')).toBe(0);
+    expect(weekdayIndex('2026-07-06')).toBe(1);
+    expect(weekdayIndex('2026-07-11')).toBe(6);
+  });
+});
+
+describe('endOfWeekString / startOfNextWeekString', () => {
+  it('ends the Israel week on Saturday', () => {
+    expect(endOfWeekString('2026-07-08')).toBe('2026-07-11'); // Wed → Sat
+    expect(endOfWeekString('2026-07-05')).toBe('2026-07-11'); // Sun → Sat
+    expect(endOfWeekString('2026-07-11')).toBe('2026-07-11'); // Sat → Sat
+  });
+
+  it('starts the next week on Sunday', () => {
+    expect(startOfNextWeekString('2026-07-08')).toBe('2026-07-12');
+    expect(startOfNextWeekString('2026-07-11')).toBe('2026-07-12');
+    expect(startOfNextWeekString('2026-07-05')).toBe('2026-07-12');
+  });
+});
+
+describe('month boundary helpers', () => {
+  it('returns the last day of the current month', () => {
+    expect(endOfMonthString('2026-07-10')).toBe('2026-07-31');
+    expect(endOfMonthString('2026-02-01')).toBe('2026-02-28');
+  });
+
+  it('returns the first and last day of the next month', () => {
+    expect(startOfNextMonthString('2026-07-10')).toBe('2026-08-01');
+    expect(endOfNextMonthString('2026-07-10')).toBe('2026-08-31');
+    expect(startOfNextMonthString('2026-12-15')).toBe('2027-01-01');
+    expect(endOfNextMonthString('2026-12-15')).toBe('2027-01-31');
+  });
+});
+
+describe('datesInRange', () => {
+  it('lists inclusive YYYY-MM-DD dates', () => {
+    expect(datesInRange('2026-07-08', '2026-07-11')).toEqual([
+      '2026-07-08',
+      '2026-07-09',
+      '2026-07-10',
+      '2026-07-11',
+    ]);
+  });
+
+  it('returns a single day when start equals end', () => {
+    expect(datesInRange('2026-07-08', '2026-07-08')).toEqual(['2026-07-08']);
+  });
+
+  it('returns an empty list when start is after end', () => {
+    expect(datesInRange('2026-07-11', '2026-07-08')).toEqual([]);
   });
 });
