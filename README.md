@@ -38,13 +38,17 @@ Primary buyer: owner/manager of a single-location service business (salon, clini
 
 ## Try the live product
 
+**Customer booking needs no account** — open the live app and book immediately.
+
 | Flow | How |
 | --- | --- |
 | **Customer booking (no login)** | Open [/book](https://fp-shifter.vercel.app/book) → pick services → date/time → details → confirmation |
 | **Manage / cancel a booking** | [/book/manage](https://fp-shifter.vercel.app/book/manage) with confirmation number + phone from the success page |
 | **Staff login** | [/login](https://fp-shifter.vercel.app/login) — invite-only (no public sign-up) |
 
-> **Demo staff accounts:** if the course reviewer needs staff credentials, add them here before submission (email + temporary password). Public booking works without any account.
+> **Demo staff credentials** (admin / employee email + password) are in the submission document [`SUBMISSION.md`](SUBMISSION.md) — fill them in before handing in to Classroom.
+>
+> **Local demo database (fast path):** run [`supabase/install_all.sql`](supabase/install_all.sql) in the Supabase SQL editor, then optionally [`supabase/seed.sql`](supabase/seed.sql) for sample services/staff data.
 
 ---
 
@@ -161,6 +165,31 @@ Source of truth: [`supabase/schema.sql`](supabase/schema.sql). You can also open
 
 ---
 
+## Screenshots
+
+Captured from the real React app (Hebrew RTL) against the network-stubbed Playwright setup (`node scripts/screenshots.mjs`).
+
+| | |
+| --- | --- |
+| **Customer booking** — services, date, and available slots | **Booking success** — confirmation summary + manage link |
+| ![Customer booking](docs/screenshots/01-booking.png) | ![Booking success](docs/screenshots/02-booking-success.png) |
+| **Admin dashboard** — today’s visits, treatments, open items | **Employee availability** — bulk open week/month + workday toggles |
+| ![Admin dashboard](docs/screenshots/03-admin-dashboard.png) | ![Employee availability](docs/screenshots/04-employee-availability.png) |
+
+---
+
+## AI-assisted development (Vibe Coding)
+
+This project was built in **Cursor** with AI agents as the primary coding workflow (not as a runtime product dependency).
+
+1. **Parallel audits** — explore subagents reviewed auth/user lifecycle, customer booking, and admin/employee flows concurrently, then findings were prioritized (high → medium).
+2. **Scoped fixers** — fixer subagents implemented confirmed gaps with strict file scopes so disjoint work (e.g. auth vs booking) could run in parallel without colliding.
+3. **Reviewer → builder loop** — a **GLM** reviewer agent inspected feature commits; its findings were fed back to a **Grok** builder agent for fixes (example: bulk availability week/month + workday toggles).
+4. **Model mix** — different models per task (explore/audit, implement, review) rather than one model for everything.
+5. **TDD / CI guardrails** — features land with Vitest coverage (**334** unit tests), network-stubbed Playwright e2e (`npm run e2e`), and CI (lint + unit + build + e2e) on every push/PR.
+
+---
+
 ## Architecture (for developers)
 
 ```
@@ -186,14 +215,14 @@ supabase/
 ## Setup (local)
 
 1. Create a Supabase project.
-2. SQL editor, in order: `schema.sql` → `rls.sql` → `functions.sql`.
+2. SQL editor: run [`supabase/install_all.sql`](supabase/install_all.sql) (or, in order: `schema.sql` → `rls.sql` → `functions.sql`).
 3. Auth → Email: disable “Allow new users to sign up”.
 4. Bootstrap first Admin after invite:
    ```sql
    update public.users set role = 'Admin'
    where id = (select id from auth.users where email = 'you@example.com');
    ```
-5. Optional: `supabase/seed.sql`.
+5. Optional demo data: [`supabase/seed.sql`](supabase/seed.sql).
 6. `cp .env.example .env` → set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 7. `npm install && npm run dev`
 
@@ -216,6 +245,7 @@ supabase/
 | `npm run dev` | Vite dev server |
 | `npm test` | Vitest unit tests |
 | `npm run e2e` | Playwright E2E (stubbed) |
+| `npm run screenshots` | Capture README PNGs into `docs/screenshots/` (stubbed) |
 | `npm run build` | Production build |
 
 CI runs lint, unit tests, build, and e2e on every push/PR.
