@@ -48,7 +48,7 @@ Primary buyer: owner/manager of a single-location service business (salon, clini
 
 > **Demo staff credentials** (admin / employee email + password) are in the submission document [`SUBMISSION.md`](SUBMISSION.md) — fill them in before handing in to Classroom.
 >
-> **Local demo database (fast path):** run [`supabase/install_all.sql`](supabase/install_all.sql) in the Supabase SQL editor, then optionally [`supabase/seed.sql`](supabase/seed.sql) for sample services/staff data.
+> **Local demo database (fast path):** run [`supabase/install_all.sql`](supabase/install_all.sql) in the Supabase SQL editor, invite staff, then run [`supabase/seed.sql`](supabase/seed.sql) for services, ~90 days of availability, demo customers, and sample appointments (dashboard / assign / open shifts).
 
 ---
 

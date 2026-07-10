@@ -1109,5 +1109,7 @@ insert into service_types (name, description, base_price, default_duration) valu
 -- 3. Make yourself Admin (replace the email):
 --    update public.users set role = 'Admin'
 --    where id = (select id from auth.users where email = 'you@example.com');
--- 4. Run supabase/seed.sql (skills + ~90 days of 09:00–17:00 availability)
---    so /book has slots for graders. Or open availability in-app via פתיחה מרוכזת.
+-- 4. Run supabase/seed.sql after inviting staff:
+--    services, skills, ~90 days availability, demo customers,
+--    and sample appointments (today / open shifts / my shifts).
+--    Safe to re-run. Or open availability in-app via פתיחה מרוכזת.
