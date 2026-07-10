@@ -48,3 +48,13 @@ export async function removeSkill(skillId) {
 export async function setUserRole(userId, role) {
   return unwrap(await supabase.rpc('admin_set_user_role', { p_user_id: userId, p_role: role }));
 }
+
+// Soft-delete a staff member; the RPC also returns their future
+// assignments to the open pool in the same transaction.
+export async function deactivateStaff(userId) {
+  return unwrap(await supabase.rpc('admin_deactivate_user', { p_user_id: userId }));
+}
+
+export async function reactivateStaff(userId) {
+  return unwrap(await supabase.rpc('admin_reactivate_user', { p_user_id: userId }));
+}

@@ -26,6 +26,9 @@ import {
   removeSkill,
   setUserRole,
   updateStaffProfile,
+  unassignShift,
+  deactivateStaff,
+  reactivateStaff,
 } from './api';
 
 vi.mock('./supabase', () => ({
@@ -195,22 +198,53 @@ describe('assignShift', () => {
     vi.clearAllMocks();
   });
 
-  it('throws SHIFT_TAKEN when a concurrent claim emptied the match', async () => {
-    const query = createQuery({ data: [], error: null });
-    supabase.from.mockReturnValue(query);
+  it('assigns via the assign_shift RPC (server re-checks eligibility)', async () => {
+    const result = { item_id: 'item-9', user_id: 'emp-2' };
+    supabase.rpc.mockResolvedValue({ data: result, error: null });
 
-    await expect(assignShift('item-9', 'emp-2')).rejects.toThrow('SHIFT_TAKEN');
-    expect(query.is).toHaveBeenCalledWith('user_id', null);
+    await expect(assignShift('item-9', 'emp-2')).resolves.toEqual(result);
+    expect(supabase.rpc).toHaveBeenCalledWith('assign_shift', {
+      p_item_id: 'item-9',
+      p_user_id: 'emp-2',
+    });
   });
 
-  it('returns the assigned row on success', async () => {
-    const row = { id: 'item-9', user_id: 'emp-2' };
-    const query = createQuery({ data: [row], error: null });
-    supabase.from.mockReturnValue(query);
+  it('propagates SHIFT_TAKEN when a volunteer claimed it concurrently', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('SHIFT_TAKEN') });
 
-    await expect(assignShift('item-9', 'emp-2')).resolves.toEqual(row);
-    expect(query.update).toHaveBeenCalledWith({ user_id: 'emp-2' });
-    expect(query.eq).toHaveBeenCalledWith('id', 'item-9');
+    await expect(assignShift('item-9', 'emp-2')).rejects.toThrow('SHIFT_TAKEN');
+  });
+
+  it('propagates NOT_QUALIFIED from the server-side skill check', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('NOT_QUALIFIED') });
+
+    await expect(assignShift('item-9', 'emp-2')).rejects.toThrow('NOT_QUALIFIED');
+  });
+});
+
+describe('unassignShift', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('unassigns via the unassign_shift RPC', async () => {
+    const result = { item_id: 'item-9', user_id: null };
+    supabase.rpc.mockResolvedValue({ data: result, error: null });
+
+    await expect(unassignShift('item-9')).resolves.toEqual(result);
+    expect(supabase.rpc).toHaveBeenCalledWith('unassign_shift', { p_item_id: 'item-9' });
+  });
+
+  it('propagates CANNOT_UNASSIGN_PAST for historical items', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('CANNOT_UNASSIGN_PAST') });
+
+    await expect(unassignShift('item-9')).rejects.toThrow('CANNOT_UNASSIGN_PAST');
+  });
+
+  it('propagates ALREADY_UNASSIGNED when the item has no assignee', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('ALREADY_UNASSIGNED') });
+
+    await expect(unassignShift('item-9')).rejects.toThrow('ALREADY_UNASSIGNED');
   });
 });
 
@@ -509,6 +543,10 @@ describe('getDashboardData', () => {
       staffCount: 4,
     });
     expect(aptQuery.neq).toHaveBeenCalledWith('status', 'Cancelled');
+    // The dashboard needs the customer's phone for the tel: contact link
+    expect(aptQuery.select).toHaveBeenCalledWith(
+      expect.stringContaining('customers(first_name, last_name, phone)')
+    );
   });
 
   it('throws when the count query fails', async () => {
@@ -600,6 +638,43 @@ describe('team api', () => {
       updateStaffProfile('emp-1', { first_name: '  ', last_name: 'לוי' })
     ).rejects.toThrow('INVALID_NAME');
     expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('updateStaffProfile passes phone through the allowlist (null clears it)', async () => {
+    const row = { id: 'emp-1', first_name: 'דנה', last_name: 'לוי', phone: null };
+    const query = createQuery({ data: row, error: null });
+    supabase.from.mockReturnValue(query);
+
+    await updateStaffProfile('emp-1', { first_name: 'דנה', last_name: 'לוי', phone: null });
+    expect(query.update).toHaveBeenCalledWith({
+      first_name: 'דנה',
+      last_name: 'לוי',
+      phone: null,
+    });
+  });
+
+  it('deactivateStaff goes through the admin_deactivate_user RPC', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: null });
+
+    await deactivateStaff('emp-1');
+    expect(supabase.rpc).toHaveBeenCalledWith('admin_deactivate_user', {
+      p_user_id: 'emp-1',
+    });
+  });
+
+  it('deactivateStaff propagates CANNOT_DEACTIVATE_SELF', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: new Error('CANNOT_DEACTIVATE_SELF') });
+
+    await expect(deactivateStaff('me')).rejects.toThrow('CANNOT_DEACTIVATE_SELF');
+  });
+
+  it('reactivateStaff goes through the admin_reactivate_user RPC', async () => {
+    supabase.rpc.mockResolvedValue({ data: null, error: null });
+
+    await reactivateStaff('emp-1');
+    expect(supabase.rpc).toHaveBeenCalledWith('admin_reactivate_user', {
+      p_user_id: 'emp-1',
+    });
   });
 });
 

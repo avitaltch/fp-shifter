@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Briefcase, ShieldCheck, UserRound, Pencil, Check, X } from 'lucide-react';
+import { Briefcase, ShieldCheck, UserRound, Pencil, Check, X, UserX } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   listStaffWithSkills,
@@ -8,6 +8,7 @@ import {
   removeSkill,
   setUserRole,
   updateStaffProfile,
+  deactivateStaff,
 } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
@@ -23,7 +24,7 @@ import './TeamPage.css';
 const TeamPage = () => {
   const { session, retryProfile } = useAuth();
   const [editingId, setEditingId] = useState(null);
-  const [nameDraft, setNameDraft] = useState({ first_name: '', last_name: '' });
+  const [nameDraft, setNameDraft] = useState({ first_name: '', last_name: '', phone: '' });
 
   const fetchTeam = useCallback(async () => {
     const [{ staff, skills }, services] = await Promise.all([
@@ -46,18 +47,20 @@ const TeamPage = () => {
     setNameDraft({
       first_name: employee.first_name === 'New' ? '' : employee.first_name,
       last_name: employee.last_name === 'User' ? '' : employee.last_name,
+      phone: employee.phone || '',
     });
     setMessage(null);
   };
 
   const cancelEditName = () => {
     setEditingId(null);
-    setNameDraft({ first_name: '', last_name: '' });
+    setNameDraft({ first_name: '', last_name: '', phone: '' });
   };
 
   const saveName = async (employee) => {
     const first = nameDraft.first_name.trim();
     const last = nameDraft.last_name.trim();
+    const phone = nameDraft.phone.trim();
     if (!first || !last) {
       setMessage({ type: 'error', text: 'נא להזין שם פרטי ושם משפחה.' });
       return;
@@ -65,10 +68,15 @@ const TeamPage = () => {
 
     const { ok, result } = await run(
       `name:${employee.id}`,
-      () => updateStaffProfile(employee.id, { first_name: first, last_name: last }),
+      () =>
+        updateStaffProfile(employee.id, {
+          first_name: first,
+          last_name: last,
+          phone: phone || null,
+        }),
       {
-        success: 'השם עודכן בהצלחה.',
-        errorFallback: 'שגיאה בעדכון השם.',
+        success: 'הפרטים עודכנו בהצלחה.',
+        errorFallback: 'שגיאה בעדכון הפרטים.',
       }
     );
     if (ok) {
@@ -76,12 +84,36 @@ const TeamPage = () => {
         ...prev,
         staff: prev.staff.map((u) =>
           u.id === employee.id
-            ? { ...u, first_name: result.first_name, last_name: result.last_name }
+            ? { ...u, first_name: result.first_name, last_name: result.last_name, phone: result.phone }
             : u
         ),
       }));
       setEditingId(null);
       if (employee.id === session?.user?.id) retryProfile?.();
+    }
+  };
+
+  const deactivate = async (employee) => {
+    const confirmed = window.confirm(
+      `להשבית את ${employee.first_name} ${employee.last_name}? כל השיבוצים העתידיים של העובד/ת יבוטלו ויחזרו לרשימת הממתינים לשיבוץ.`
+    );
+    if (!confirmed) return;
+
+    // admin_deactivate_user RPC: soft-deletes the profile and frees the
+    // employee's future assignments in one transaction.
+    const { ok } = await run(
+      `deactivate:${employee.id}`,
+      () => deactivateStaff(employee.id),
+      {
+        success: 'העובד/ת הושבת/ה והשיבוצים העתידיים שוחררו.',
+        errorFallback: 'שגיאה בהשבתת העובד/ת.',
+      }
+    );
+    if (ok) {
+      setData((prev) => ({
+        ...prev,
+        staff: prev.staff.filter((u) => u.id !== employee.id),
+      }));
     }
   };
 
@@ -164,6 +196,14 @@ const TeamPage = () => {
                       onChange={(e) => setNameDraft((d) => ({ ...d, last_name: e.target.value }))}
                       placeholder="שם משפחה"
                     />
+                    <input
+                      type="tel"
+                      dir="ltr"
+                      aria-label={`טלפון של ${employee.first_name}`}
+                      value={nameDraft.phone}
+                      onChange={(e) => setNameDraft((d) => ({ ...d, phone: e.target.value }))}
+                      placeholder="טלפון"
+                    />
                     <button
                       type="button"
                       className="icon-btn save"
@@ -197,16 +237,30 @@ const TeamPage = () => {
                     </button>
                   </div>
                 )}
-                <select
-                  className="role-select"
-                  value={employee.role}
-                  onChange={(e) => changeRole(employee, e.target.value)}
-                  disabled={employee.id === session?.user?.id}
-                  aria-label={`תפקיד של ${employee.first_name}`}
-                >
-                  <option value="Employee">עובד/ת</option>
-                  <option value="Admin">מנהל/ת</option>
-                </select>
+                <div className="member-actions">
+                  <select
+                    className="role-select"
+                    value={employee.role}
+                    onChange={(e) => changeRole(employee, e.target.value)}
+                    disabled={employee.id === session?.user?.id}
+                    aria-label={`תפקיד של ${employee.first_name}`}
+                  >
+                    <option value="Employee">עובד/ת</option>
+                    <option value="Admin">מנהל/ת</option>
+                  </select>
+                  {employee.id !== session?.user?.id && (
+                    <button
+                      type="button"
+                      className="icon-btn deactivate"
+                      aria-label={`השבתת ${employee.first_name} ${employee.last_name}`}
+                      title="השבתת עובד/ת"
+                      onClick={() => deactivate(employee)}
+                      disabled={busyKey === `deactivate:${employee.id}`}
+                    >
+                      <UserX size={18} />
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="skills-section">

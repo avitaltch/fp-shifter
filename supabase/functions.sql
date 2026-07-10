@@ -369,6 +369,161 @@ end;
 $$;
 
 -- ------------------------------------------------------------
+-- assign_shift — admin assignment with the same server-side checks
+-- as claim_shift (skill, availability, conflicts), so the browser
+-- cannot assign an ineligible employee even with a tampered client.
+-- ------------------------------------------------------------
+create or replace function public.assign_shift(
+  p_item_id uuid,
+  p_user_id uuid
+)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_item record;
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  if not exists (
+    select 1 from users u
+    where u.id = p_user_id and u.deleted_at is null
+  ) then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+
+  select ai.* into v_item
+  from appointment_items ai
+  join appointments ap on ap.id = ai.appointment_id
+  where ai.id = p_item_id
+    and ai.deleted_at is null
+    and ap.deleted_at is null
+    and ap.status <> 'Cancelled';
+
+  if not found then
+    raise exception 'SHIFT_TAKEN';
+  end if;
+
+  if not exists (
+    select 1 from employee_skills es
+    where es.user_id = p_user_id and es.service_type_id = v_item.service_type_id
+  ) then
+    raise exception 'NOT_QUALIFIED';
+  end if;
+
+  if not exists (
+    select 1 from availabilities a
+    where a.user_id = p_user_id
+      and a.available_date = v_item.work_date
+      and a.start_time <= v_item.start_time
+      and a.end_time >= v_item.end_time
+  ) then
+    raise exception 'NOT_AVAILABLE';
+  end if;
+
+  update appointment_items
+  set user_id = p_user_id
+  where id = p_item_id and user_id is null;
+
+  if not found then
+    raise exception 'SHIFT_TAKEN';
+  end if;
+
+  return json_build_object('item_id', p_item_id, 'user_id', p_user_id);
+
+exception
+  when exclusion_violation then
+    -- overlaps another assignment the target employee already has
+    raise exception 'SHIFT_CONFLICT';
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- unassign_shift — admin returns an assigned item to the open
+-- pool. Past work is history and stays assigned.
+-- ------------------------------------------------------------
+create or replace function public.unassign_shift(p_item_id uuid)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_item record;
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  select ai.* into v_item
+  from appointment_items ai
+  where ai.id = p_item_id
+    and ai.deleted_at is null
+    and ai.user_id is not null;
+
+  if not found then
+    raise exception 'ALREADY_UNASSIGNED';
+  end if;
+
+  if v_item.work_date < public.business_now()::date then
+    raise exception 'CANNOT_UNASSIGN_PAST';
+  end if;
+
+  update appointment_items
+  set user_id = null
+  where id = p_item_id;
+
+  return json_build_object('item_id', p_item_id, 'user_id', null);
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- admin_deactivate_user / admin_reactivate_user — staff offboarding.
+-- Deactivation soft-deletes the profile AND returns the employee's
+-- future assignments to the open pool in one transaction, so booked
+-- work is never stranded on a disabled account.
+-- ------------------------------------------------------------
+create or replace function public.admin_deactivate_user(p_user_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+  if auth.uid() = p_user_id then
+    -- an admin deactivating themselves could lock everyone out
+    raise exception 'CANNOT_DEACTIVATE_SELF';
+  end if;
+
+  update users set deleted_at = now()
+  where id = p_user_id and deleted_at is null;
+  if not found then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+
+  update appointment_items
+  set user_id = null
+  where user_id = p_user_id
+    and work_date >= public.business_now()::date
+    and deleted_at is null;
+end;
+$$;
+
+create or replace function public.admin_reactivate_user(p_user_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  update users set deleted_at = null
+  where id = p_user_id and deleted_at is not null;
+  if not found then
+    raise exception 'USER_NOT_FOUND';
+  end if;
+end;
+$$;
+
+-- ------------------------------------------------------------
 -- Grants. Postgres gives EXECUTE to PUBLIC by default, so every
 -- function is revoked first; only what clients need is granted back.
 -- qualified_employees/business_now are internal (called from the
@@ -381,9 +536,17 @@ revoke execute on function public.book_appointment(text, text, text, text, date,
 revoke execute on function public.claim_shift(uuid) from public;
 revoke execute on function public.cancel_appointment(uuid) from public;
 revoke execute on function public.admin_set_user_role(uuid, text) from public;
+revoke execute on function public.assign_shift(uuid, uuid) from public;
+revoke execute on function public.unassign_shift(uuid) from public;
+revoke execute on function public.admin_deactivate_user(uuid) from public;
+revoke execute on function public.admin_reactivate_user(uuid) from public;
 
 grant execute on function public.get_available_slots(date, uuid[]) to anon, authenticated;
 grant execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) to anon, authenticated;
 grant execute on function public.claim_shift(uuid) to authenticated;
 grant execute on function public.cancel_appointment(uuid) to authenticated;
 grant execute on function public.admin_set_user_role(uuid, text) to authenticated;
+grant execute on function public.assign_shift(uuid, uuid) to authenticated;
+grant execute on function public.unassign_shift(uuid) to authenticated;
+grant execute on function public.admin_deactivate_user(uuid) to authenticated;
+grant execute on function public.admin_reactivate_user(uuid) to authenticated;

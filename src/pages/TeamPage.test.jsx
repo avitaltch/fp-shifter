@@ -8,6 +8,7 @@ import {
   removeSkill,
   setUserRole,
   updateStaffProfile,
+  deactivateStaff,
 } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
@@ -17,6 +18,7 @@ vi.mock('../lib/api', () => ({
   removeSkill: vi.fn(),
   setUserRole: vi.fn(),
   updateStaffProfile: vi.fn(),
+  deactivateStaff: vi.fn(),
 }));
 
 const mockRetryProfile = vi.fn();
@@ -34,8 +36,8 @@ vi.mock('../context/AuthContext', () => ({
 }));
 
 const mockStaff = [
-  { id: 'admin-1', first_name: 'דנה', last_name: 'לוי', role: 'Admin' },
-  { id: 'emp-2', first_name: 'יוסי', last_name: 'כהן', role: 'Employee' },
+  { id: 'admin-1', first_name: 'דנה', last_name: 'לוי', role: 'Admin', phone: null },
+  { id: 'emp-2', first_name: 'יוסי', last_name: 'כהן', role: 'Employee', phone: '050-1111111' },
 ];
 
 const mockSkills = [{ id: 'skill-1', user_id: 'emp-2', service_type_id: 'svc-1' }];
@@ -189,6 +191,7 @@ describe('TeamPage', () => {
       id: 'emp-2',
       first_name: 'יוסף',
       last_name: 'כהן',
+      phone: '050-1111111',
     });
     render(<TeamPage />);
     await screen.findByRole('heading', { name: 'יוסי כהן' });
@@ -203,11 +206,65 @@ describe('TeamPage', () => {
       expect(updateStaffProfile).toHaveBeenCalledWith('emp-2', {
         first_name: 'יוסף',
         last_name: 'כהן',
+        phone: '050-1111111',
       });
     });
-    expect(await screen.findByText('השם עודכן בהצלחה.')).toBeInTheDocument();
+    expect(await screen.findByText('הפרטים עודכנו בהצלחה.')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'יוסף כהן' })).toBeInTheDocument();
     expect(mockRetryProfile).not.toHaveBeenCalled();
+  });
+
+  it('lets an admin edit an employee phone in the same edit mode', async () => {
+    updateStaffProfile.mockResolvedValue({
+      id: 'emp-2',
+      first_name: 'יוסי',
+      last_name: 'כהן',
+      phone: '052-9999999',
+    });
+    render(<TeamPage />);
+    await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+    fireEvent.click(screen.getByLabelText('ערוך שם של יוסי'));
+    // The phone input is prefilled with the current phone
+    expect(screen.getByLabelText('טלפון של יוסי')).toHaveValue('050-1111111');
+    fireEvent.change(screen.getByLabelText('טלפון של יוסי'), {
+      target: { value: '052-9999999' },
+    });
+    fireEvent.click(screen.getByLabelText('שמור שם'));
+
+    await waitFor(() => {
+      expect(updateStaffProfile).toHaveBeenCalledWith('emp-2', {
+        first_name: 'יוסי',
+        last_name: 'כהן',
+        phone: '052-9999999',
+      });
+    });
+    expect(await screen.findByText('הפרטים עודכנו בהצלחה.')).toBeInTheDocument();
+  });
+
+  it('sends phone as null when the input is cleared', async () => {
+    updateStaffProfile.mockResolvedValue({
+      id: 'emp-2',
+      first_name: 'יוסי',
+      last_name: 'כהן',
+      phone: null,
+    });
+    render(<TeamPage />);
+    await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+    fireEvent.click(screen.getByLabelText('ערוך שם של יוסי'));
+    fireEvent.change(screen.getByLabelText('טלפון של יוסי'), {
+      target: { value: '   ' },
+    });
+    fireEvent.click(screen.getByLabelText('שמור שם'));
+
+    await waitFor(() => {
+      expect(updateStaffProfile).toHaveBeenCalledWith('emp-2', {
+        first_name: 'יוסי',
+        last_name: 'כהן',
+        phone: null,
+      });
+    });
   });
 
   it('refreshes the auth profile when the admin renames themselves', async () => {
@@ -215,6 +272,7 @@ describe('TeamPage', () => {
       id: 'admin-1',
       first_name: 'דנית',
       last_name: 'לוי',
+      phone: null,
     });
     render(<TeamPage />);
     await screen.findByRole('heading', { name: 'דנה לוי' });
@@ -229,6 +287,7 @@ describe('TeamPage', () => {
       expect(updateStaffProfile).toHaveBeenCalledWith('admin-1', {
         first_name: 'דנית',
         last_name: 'לוי',
+        phone: null,
       });
     });
     expect(mockRetryProfile).toHaveBeenCalled();
@@ -246,5 +305,56 @@ describe('TeamPage', () => {
 
     expect(await screen.findByText('נא להזין שם פרטי ושם משפחה.')).toBeInTheDocument();
     expect(updateStaffProfile).not.toHaveBeenCalled();
+  });
+
+  describe('deactivating an employee', () => {
+    it('deactivates after confirmation and removes the employee from the list', async () => {
+      deactivateStaff.mockResolvedValue(null);
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+      fireEvent.click(screen.getByLabelText('השבתת יוסי כהן'));
+
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('יוסי כהן'));
+      await waitFor(() => {
+        expect(deactivateStaff).toHaveBeenCalledWith('emp-2');
+      });
+      expect(
+        await screen.findByText('העובד/ת הושבת/ה והשיבוצים העתידיים שוחררו.')
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'יוסי כהן' })).not.toBeInTheDocument();
+    });
+
+    it('does nothing when the confirmation is declined', async () => {
+      window.confirm.mockReturnValue(false);
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+      fireEvent.click(screen.getByLabelText('השבתת יוסי כהן'));
+
+      expect(deactivateStaff).not.toHaveBeenCalled();
+      expect(screen.getByRole('heading', { name: 'יוסי כהן' })).toBeInTheDocument();
+    });
+
+    it('does not offer a deactivate action on the logged-in admin', async () => {
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'דנה לוי' });
+
+      expect(screen.queryByLabelText('השבתת דנה לוי')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('השבתת יוסי כהן')).toBeInTheDocument();
+    });
+
+    it('shows a friendly error when the deactivation fails', async () => {
+      deactivateStaff.mockRejectedValue(new Error('FORBIDDEN'));
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'יוסי כהן' });
+
+      fireEvent.click(screen.getByLabelText('השבתת יוסי כהן'));
+
+      expect(
+        await screen.findByText('אין לך הרשאה לבצע פעולה זו.')
+      ).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'יוסי כהן' })).toBeInTheDocument();
+    });
   });
 });

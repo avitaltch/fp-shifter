@@ -57,6 +57,17 @@
   color: #dc2626;
 }
 
+.team-page .member-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.team-page .icon-btn.deactivate:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 .team-page .name-edit {
   display: flex;
   flex-wrap: wrap;
