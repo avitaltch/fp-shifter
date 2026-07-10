@@ -72,6 +72,14 @@ describe('CustomerBookingPage', () => {
     expect(listServices).toHaveBeenCalledTimes(1);
   });
 
+  it('links to /book/manage for existing appointments', async () => {
+    renderPage();
+
+    const manageLink = await screen.findByRole('link', { name: 'לניהול תור קיים' });
+    expect(manageLink).toHaveAttribute('href', '/book/manage');
+    expect(screen.getByText(/יש לכם תור\?/)).toBeInTheDocument();
+  });
+
   it('shows an error state when services fail to load', async () => {
     listServices.mockRejectedValue(new Error('down'));
     renderPage();
@@ -204,6 +212,7 @@ describe('CustomerBookingPage', () => {
       booking,
       serviceNames: ['תספורת'],
       customerName: 'דנה לוי',
+      phone: '050-1234567',
     };
     expect(mockNavigate).toHaveBeenCalledWith('/book/success', {
       state: expectedConfirmation,

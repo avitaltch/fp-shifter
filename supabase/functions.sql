@@ -524,6 +524,121 @@ end;
 $$;
 
 -- ------------------------------------------------------------
+-- customer_get_appointment — anon self-service lookup.
+-- Requires appointment id AND phone (trim-normalized like
+-- book_appointment). Wrong id and wrong phone both raise the
+-- same APPOINTMENT_NOT_FOUND so neither is leaked. Soft-deleted
+-- service names are included deliberately (security definer).
+-- ------------------------------------------------------------
+create or replace function public.customer_get_appointment(
+  p_appointment_id uuid,
+  p_phone text
+)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_appt record;
+  v_start_time time;
+  v_end_time time;
+  v_service_names text[];
+begin
+  select a.id, a.visit_date, a.status, c.first_name
+  into v_appt
+  from appointments a
+  join customers c on c.id = a.customer_id
+  where a.id = p_appointment_id
+    and a.deleted_at is null
+    and c.deleted_at is null
+    and trim(c.phone) = trim(coalesce(p_phone, ''));
+
+  if not found then
+    raise exception 'APPOINTMENT_NOT_FOUND';
+  end if;
+
+  -- Include soft-deleted items so a cancelled appointment still shows
+  -- its original time range and services.
+  select min(ai.start_time), max(ai.end_time)
+  into v_start_time, v_end_time
+  from appointment_items ai
+  where ai.appointment_id = v_appt.id;
+
+  select coalesce(array_agg(st.name order by ai.start_time, ai.id), '{}')
+  into v_service_names
+  from appointment_items ai
+  join service_types st on st.id = ai.service_type_id
+  where ai.appointment_id = v_appt.id;
+
+  return json_build_object(
+    'appointment_id', v_appt.id,
+    'visit_date', v_appt.visit_date,
+    'start_time', v_start_time,
+    'end_time', v_end_time,
+    'status', v_appt.status,
+    'service_names', to_json(v_service_names),
+    'customer_first_name', v_appt.first_name
+  );
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- customer_cancel_appointment — anon self-service cancel.
+-- Same phone gate as customer_get_appointment. Mirrors admin
+-- cancel_appointment (status = Cancelled + soft-delete items)
+-- but only for future appointments that are not already cancelled.
+-- ------------------------------------------------------------
+create or replace function public.customer_cancel_appointment(
+  p_appointment_id uuid,
+  p_phone text
+)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_appt record;
+  v_start_time time;
+begin
+  select a.id, a.visit_date, a.status
+  into v_appt
+  from appointments a
+  join customers c on c.id = a.customer_id
+  where a.id = p_appointment_id
+    and a.deleted_at is null
+    and c.deleted_at is null
+    and trim(c.phone) = trim(coalesce(p_phone, ''));
+
+  if not found then
+    raise exception 'APPOINTMENT_NOT_FOUND';
+  end if;
+
+  if v_appt.status = 'Cancelled' then
+    raise exception 'ALREADY_CANCELLED';
+  end if;
+
+  select min(ai.start_time)
+  into v_start_time
+  from appointment_items ai
+  where ai.appointment_id = v_appt.id
+    and ai.deleted_at is null;
+
+  if v_start_time is null
+     or (v_appt.visit_date + v_start_time)::timestamp <= public.business_now() then
+    raise exception 'CANCEL_TOO_LATE';
+  end if;
+
+  update appointments
+  set status = 'Cancelled'
+  where id = v_appt.id and deleted_at is null and status <> 'Cancelled';
+
+  if not found then
+    raise exception 'ALREADY_CANCELLED';
+  end if;
+
+  update appointment_items
+  set deleted_at = now()
+  where appointment_id = v_appt.id and deleted_at is null;
+end;
+$$;
+
+-- ------------------------------------------------------------
 -- Grants. Postgres gives EXECUTE to PUBLIC by default, so every
 -- function is revoked first; only what clients need is granted back.
 -- qualified_employees/business_now are internal (called from the
@@ -535,6 +650,8 @@ revoke execute on function public.get_available_slots(date, uuid[]) from public;
 revoke execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) from public;
 revoke execute on function public.claim_shift(uuid) from public;
 revoke execute on function public.cancel_appointment(uuid) from public;
+revoke execute on function public.customer_get_appointment(uuid, text) from public;
+revoke execute on function public.customer_cancel_appointment(uuid, text) from public;
 revoke execute on function public.admin_set_user_role(uuid, text) from public;
 revoke execute on function public.assign_shift(uuid, uuid) from public;
 revoke execute on function public.unassign_shift(uuid) from public;
@@ -543,6 +660,8 @@ revoke execute on function public.admin_reactivate_user(uuid) from public;
 
 grant execute on function public.get_available_slots(date, uuid[]) to anon, authenticated;
 grant execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) to anon, authenticated;
+grant execute on function public.customer_get_appointment(uuid, text) to anon, authenticated;
+grant execute on function public.customer_cancel_appointment(uuid, text) to anon, authenticated;
 grant execute on function public.claim_shift(uuid) to authenticated;
 grant execute on function public.cancel_appointment(uuid) to authenticated;
 grant execute on function public.admin_set_user_role(uuid, text) to authenticated;

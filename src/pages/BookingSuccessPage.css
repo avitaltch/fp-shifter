@@ -20,6 +20,18 @@
   margin-bottom: 0.5rem;
 }
 
+.manage-link {
+  display: inline-block;
+  margin-top: 0.75rem;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.manage-link:hover {
+  opacity: 0.85;
+}
+
 .home-link {
   display: inline-block;
   background: var(--primary);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { listServices, getAvailableSlots, bookAppointment } from '../lib/api';
 import { friendlyError } from '../lib/errors';
 import { Check, Clock, Calendar as CalendarIcon, User, Scissors } from 'lucide-react';
@@ -115,6 +115,7 @@ const CustomerBookingPage = () => {
           .filter((s) => selectedServices.includes(s.id))
           .map((s) => s.name),
         customerName: `${firstName.trim()} ${lastName.trim()}`,
+        phone: phone.trim(),
       };
 
       // Keep a copy so the success page survives a refresh / direct visit.
@@ -164,6 +165,10 @@ const CustomerBookingPage = () => {
       <div className="booking-header">
         <h1>הזמנת תור חדש</h1>
         <p className="subtitle">יש לבחור את הטיפולים לשילוב בביקור הקרוב.</p>
+        <p className="manage-entry">
+          יש לכם תור?{' '}
+          <Link to="/book/manage">לניהול תור קיים</Link>
+        </p>
       </div>
 
       <form onSubmit={handleBooking} className="booking-form">

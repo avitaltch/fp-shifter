@@ -36,8 +36,8 @@ const expectFullDetails = () => {
   expect(screen.getByText('שעה ו-45 דקות')).toBeInTheDocument();
   expect(screen.getByText('₪350')).toBeInTheDocument();
   expect(
-    screen.getByText('לשינוי או ביטול התור יש להתקשר למספרה.')
-  ).toBeInTheDocument();
+    screen.getByRole('link', { name: 'לביטול או שינוי התור' })
+  ).toHaveAttribute('href', '/book/manage');
 };
 
 describe('BookingSuccessPage', () => {
@@ -92,5 +92,13 @@ describe('BookingSuccessPage', () => {
 
     const backLink = screen.getByRole('link', { name: /חזרה להזמנת תור נוסף/ });
     expect(backLink).toHaveAttribute('href', '/book');
+  });
+
+  it('links to /book/manage for cancel or change', () => {
+    renderWithState(confirmation);
+
+    expect(
+      screen.getByRole('link', { name: 'לביטול או שינוי התור' })
+    ).toHaveAttribute('href', '/book/manage');
   });
 });

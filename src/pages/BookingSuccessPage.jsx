@@ -50,7 +50,9 @@ const BookingSuccessPage = () => {
             </p>
             <p><strong>זמן מוערך:</strong> {formatDuration(booking.total_duration)}</p>
             <p><strong>מחיר:</strong> ₪{booking.total_price}</p>
-            <p className="change-note">לשינוי או ביטול התור יש להתקשר למספרה.</p>
+            <Link to="/book/manage" className="manage-link">
+              לביטול או שינוי התור
+            </Link>
           </div>
         ) : (
           <p>ההזמנה נקלטה במערכת. נתראה בקרוב!</p>

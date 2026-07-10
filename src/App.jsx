@@ -7,6 +7,7 @@ import ManagerDashboardPage from './pages/ManagerDashboardPage';
 import ShiftAssignmentPage from './pages/ShiftAssignmentPage';
 import CustomerBookingPage from './pages/CustomerBookingPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
+import BookingManagePage from './pages/BookingManagePage';
 import EmployeeAvailabilityPage from './pages/EmployeeAvailabilityPage';
 import MyShiftsPage from './pages/MyShiftsPage';
 import AboutPage from './pages/AboutPage';
@@ -28,6 +29,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/book" element={<CustomerBookingPage />} />
           <Route path="/book/success" element={<BookingSuccessPage />} />
+          <Route path="/book/manage" element={<BookingManagePage />} />
           {/* Legacy multi-tenant-style links keep working */}
           <Route path="/book/:businessId" element={<Navigate to="/book" replace />} />
           <Route path="/book/:businessId/success" element={<Navigate to="/book/success" replace />} />

@@ -1,0 +1,128 @@
+.manage-page .manage-header {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.manage-page .manage-icon {
+  color: var(--primary);
+  margin-bottom: 0.75rem;
+}
+
+.manage-page .subtitle {
+  color: var(--text-secondary);
+  margin: 0.35rem 0 0;
+}
+
+.manage-page .manage-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.manage-page .input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.manage-page .input-group label {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.manage-page .input-group input {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 8px;
+  font-size: 1rem;
+  min-height: 48px;
+}
+
+.manage-details {
+  background: var(--bg-app);
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.manage-details h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+}
+
+.manage-details p {
+  margin: 0;
+}
+
+.status-cancelled {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.status-active {
+  color: var(--success, #16a34a);
+  font-weight: 600;
+}
+
+.cancel-btn {
+  margin-top: 0.75rem;
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.85rem 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.cancel-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rebook-block {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rebook-copy {
+  font-weight: 600;
+}
+
+.rebook-link {
+  text-decoration: none;
+  min-height: 48px;
+}
+
+.lookup-again {
+  margin-top: 0.5rem;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+@media (max-width: 480px) {
+  .manage-details {
+    padding: 1.15rem;
+  }
+
+  .cancel-btn,
+  .rebook-link,
+  .lookup-again,
+  .manage-page .submit-btn {
+    width: 100%;
+  }
+}
