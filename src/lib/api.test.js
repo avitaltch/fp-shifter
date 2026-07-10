@@ -29,12 +29,16 @@ import {
   unassignShift,
   deactivateStaff,
   reactivateStaff,
+  inviteStaff,
 } from './api';
 
 vi.mock('./supabase', () => ({
   supabase: {
     from: vi.fn(),
     rpc: vi.fn(),
+    functions: {
+      invoke: vi.fn(),
+    },
   },
 }));
 
@@ -675,6 +679,39 @@ describe('team api', () => {
     expect(supabase.rpc).toHaveBeenCalledWith('admin_reactivate_user', {
       p_user_id: 'emp-1',
     });
+  });
+
+  it('inviteStaff invokes the invite-user edge function', async () => {
+    supabase.functions.invoke.mockResolvedValue({
+      data: { ok: true, email: 'new@example.com' },
+      error: null,
+    });
+
+    await expect(inviteStaff('new@example.com')).resolves.toEqual({
+      ok: true,
+      email: 'new@example.com',
+    });
+    expect(supabase.functions.invoke).toHaveBeenCalledWith('invite-user', {
+      body: { email: 'new@example.com' },
+    });
+  });
+
+  it('inviteStaff propagates error codes from the function body', async () => {
+    supabase.functions.invoke.mockResolvedValue({
+      data: { error: 'ALREADY_EXISTS' },
+      error: { message: 'Edge Function returned a non-2xx status code' },
+    });
+
+    await expect(inviteStaff('taken@example.com')).rejects.toThrow('ALREADY_EXISTS');
+  });
+
+  it('inviteStaff falls back to INVITE_FAILED when no code is returned', async () => {
+    supabase.functions.invoke.mockResolvedValue({
+      data: null,
+      error: { message: 'network' },
+    });
+
+    await expect(inviteStaff('x@y.com')).rejects.toThrow('INVITE_FAILED');
   });
 });
 

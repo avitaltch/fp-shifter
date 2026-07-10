@@ -58,3 +58,20 @@ export async function deactivateStaff(userId) {
 export async function reactivateStaff(userId) {
   return unwrap(await supabase.rpc('admin_reactivate_user', { p_user_id: userId }));
 }
+
+// Admin-only invite via Edge Function (service-role stays off the client).
+// Throws Error with the function's error code (FORBIDDEN, ALREADY_EXISTS, …)
+// so callers / friendlyError can map it.
+export async function inviteStaff(email) {
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: { email },
+  });
+
+  if (error) {
+    throw new Error(data?.error || 'INVITE_FAILED');
+  }
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+  return data;
+}

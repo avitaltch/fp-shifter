@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Briefcase, ShieldCheck, UserRound, Pencil, Check, X, UserX } from 'lucide-react';
+import { Briefcase, ShieldCheck, UserRound, Pencil, Check, X, UserX, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   listStaffWithSkills,
@@ -9,6 +9,7 @@ import {
   setUserRole,
   updateStaffProfile,
   deactivateStaff,
+  inviteStaff,
 } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
@@ -19,12 +20,15 @@ import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './TeamPage.css';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Admin page: manage each staff member's name, role and skills.
-// New employees are invited from the Supabase dashboard (default name "New User").
+// New employees are invited in-app (Edge Function → auth.admin.inviteUserByEmail).
 const TeamPage = () => {
   const { session, retryProfile } = useAuth();
   const [editingId, setEditingId] = useState(null);
   const [nameDraft, setNameDraft] = useState({ first_name: '', last_name: '', phone: '' });
+  const [inviteEmail, setInviteEmail] = useState('');
 
   const fetchTeam = useCallback(async () => {
     const [{ staff, skills }, services] = await Promise.all([
@@ -41,6 +45,28 @@ const TeamPage = () => {
   const staff = data?.staff ?? [];
   const skills = data?.skills ?? [];
   const services = data?.services ?? [];
+
+  const sendInvite = async (e) => {
+    e.preventDefault();
+    const email = inviteEmail.trim();
+    if (!EMAIL_RE.test(email)) {
+      setMessage({ type: 'error', text: 'נא להזין כתובת אימייל תקינה' });
+      return;
+    }
+
+    const { ok, error: inviteError } = await run(
+      'invite',
+      () => inviteStaff(email),
+      {
+        success: `נשלחה הזמנה ל-${email}. העובד/ת יופיעו ברשימה לאחר השלמת ההרשמה.`,
+        errorFallback: 'שגיאה בשליחת ההזמנה. נסו שוב.',
+      }
+    );
+    if (!ok && String(inviteError?.message || '').includes('ALREADY_EXISTS')) {
+      setMessage({ type: 'error', text: 'קיים כבר חשבון עם האימייל הזה.' });
+    }
+    if (ok) setInviteEmail('');
+  };
 
   const startEditName = (employee) => {
     setEditingId(employee.id);
@@ -166,15 +192,45 @@ const TeamPage = () => {
       <PageHeader
         icon={Briefcase}
         title="ניהול צוות"
-        subtitle="ניהול שמות, תפקידים ומיומנויות. עובדים חדשים מצטרפים בהזמנה בלבד (Supabase → Authentication → Invite user)."
+        subtitle="ניהול שמות, תפקידים ומיומנויות. עובדים חדשים מצטרפים בהזמנה מהטופס למטה."
       />
 
       {loading && <LoadingSpinner text="טוען צוות..." />}
       <Alert type="error">{error}</Alert>
       <Alert type={message?.type}>{message?.text}</Alert>
 
+      {!loading && !error && (
+        <div className="card invite-card">
+          <h3>
+            <UserPlus size={20} aria-hidden="true" />
+            הזמנת עובד/ת חדש/ה
+          </h3>
+          <p className="invite-hint">
+            שלחו הזמנה באימייל. לאחר השלמת ההרשמה יופיע העובד/ת ברשימה עם השם הזמני New User.
+          </p>
+          <form className="invite-form" onSubmit={sendInvite} noValidate>
+            <input
+              type="email"
+              dir="ltr"
+              aria-label="אימייל להזמנה"
+              placeholder="email@example.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              disabled={busyKey === 'invite'}
+            />
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={busyKey === 'invite'}
+            >
+              {busyKey === 'invite' ? 'שולח...' : 'שליחת הזמנה'}
+            </button>
+          </form>
+        </div>
+      )}
+
       {!loading && !error && staff.length === 0 && (
-        <EmptyState text="אין עדיין חברי צוות. הזמינו עובדים דרך לוח הבקרה של Supabase." />
+        <EmptyState text="אין עדיין חברי צוות. הזמינו עובד/ת חדש/ה באמצעות הטופס למעלה." />
       )}
 
       {!loading && !error && staff.length > 0 && (

@@ -29,11 +29,13 @@ supabase/
                      cancel_appointment, admin_set_user_role
   seed.sql           Optional demo data
   migrate_v1_to_v2.sql  One-time migration for a pre-existing v1 database
+  edge-functions/
+    invite-user/     Admin staff invite (service-role; JWT + Admin check)
 ```
 
 ### Security model
 - **Roles live in `public.users.role`**, guarded by RLS (`with check` pins a user's own role; only `admin_set_user_role` can change it — and never one's own). `user_metadata` is never trusted.
-- **Public sign-up is disabled** — employees are invited by an Admin (Supabase Dashboard → Authentication → Invite user). Anonymous visitors can only read the service catalog and call the two booking RPCs; the security-definer helper functions (`role_of`, `qualified_employees`, ...) are revoked from client roles.
+- **Public sign-up is disabled** — employees are invited by an Admin from the in-app Team page (Edge Function `invite-user` → `auth.admin.inviteUserByEmail`). Anonymous visitors can only read the service catalog and call the two booking RPCs; the security-definer helper functions (`role_of`, `qualified_employees`, ...) are revoked from client roles.
 - **Booking is a transactional security-definer RPC** (`book_appointment`): server-side pricing, skill matching, availability + conflict checks, atomic customer/appointment/items creation. Double-booking is additionally blocked by a Postgres exclusion constraint.
 - **Employees can only change `status`/`notes` on their own items** — a column-guard trigger rejects every other column, so times, assignees, and soft-deletes can't be tampered with from the client. Claiming an open shift goes through the `claim_shift` RPC, which enforces skills, availability, and conflicts server-side.
 - **Cancelling** goes through `cancel_appointment` (admin-only RPC) which sets the status *and* soft-deletes the items in one transaction, so the booked span is genuinely freed for re-booking.
@@ -48,7 +50,7 @@ supabase/
 
 1. Create a Supabase project.
 2. In the SQL editor run, in order: `supabase/schema.sql`, `supabase/rls.sql`, `supabase/functions.sql` (fresh DB), or `supabase/migrate_v1_to_v2.sql` then `rls.sql` + `functions.sql` (existing v1 DB).
-3. Authentication → Providers → Email: **disable** "Allow new users to sign up". Invite your staff via Authentication → Users → Invite.
+3. Authentication → Providers → Email: **disable** "Allow new users to sign up". Invite staff from the in-app Team page after the Edge Function is deployed (step below), or bootstrap the first Admin via the dashboard Invite once.
 4. Bootstrap the first Admin:
    ```sql
    update public.users set role = 'Admin'
@@ -66,6 +68,25 @@ supabase/
    - `VITE_SUPABASE_ANON_KEY`
 3. `vercel.json` rewrites all routes to `index.html` so React Router deep links (e.g. `/login`, `/dashboard`) work on refresh.
 4. In Supabase, set Authentication → URL Configuration → Site URL to the Vercel production URL (and add preview URLs to Redirect URLs) so invite/recovery emails land back on the deployed app.
+
+### Edge Function: staff invites (`invite-user`)
+
+Admins invite employees from the Team page. The client calls a Supabase Edge Function with the admin's JWT; the function uses the service-role key (never shipped to the browser) to call `auth.admin.inviteUserByEmail`.
+
+1. Deploy the function (source lives under `supabase/edge-functions/invite-user/`):
+   ```bash
+   supabase functions deploy invite-user --project-ref <your-project-ref>
+   ```
+   If the CLI expects `supabase/functions/`, symlink or copy the folder:
+   `supabase/functions/invite-user` → `../edge-functions/invite-user`.
+2. Set the redirect base URL used in invite emails:
+   ```bash
+   supabase secrets set SITE_URL=https://fp-shifter.vercel.app
+   ```
+   (Use your production URL. Falls back to `https://fp-shifter.vercel.app` if unset.)
+3. Keep the default JWT verification enabled (`verify_jwt` is on by default). The client passes the signed-in admin's JWT; the function re-checks Admin role in `public.users`.
+
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are provided automatically to deployed functions.
 
 ## Scripts
 

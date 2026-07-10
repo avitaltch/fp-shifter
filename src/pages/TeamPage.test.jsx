@@ -9,6 +9,7 @@ import {
   setUserRole,
   updateStaffProfile,
   deactivateStaff,
+  inviteStaff,
 } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
@@ -19,6 +20,7 @@ vi.mock('../lib/api', () => ({
   setUserRole: vi.fn(),
   updateStaffProfile: vi.fn(),
   deactivateStaff: vi.fn(),
+  inviteStaff: vi.fn(),
 }));
 
 const mockRetryProfile = vi.fn();
@@ -175,8 +177,87 @@ describe('TeamPage', () => {
     render(<TeamPage />);
 
     expect(
-      await screen.findByText('אין עדיין חברי צוות. הזמינו עובדים דרך לוח הבקרה של Supabase.')
+      await screen.findByText('אין עדיין חברי צוות. הזמינו עובד/ת חדש/ה באמצעות הטופס למעלה.')
     ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /הזמנת עובד\/ת חדש\/ה/ })).toBeInTheDocument();
+  });
+
+  describe('inviting a staff member', () => {
+    it('sends an invite and shows a success message', async () => {
+      inviteStaff.mockResolvedValue({ ok: true, email: 'new@salon.com' });
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'דנה לוי' });
+
+      fireEvent.change(screen.getByLabelText('אימייל להזמנה'), {
+        target: { value: 'new@salon.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'שליחת הזמנה' }));
+
+      await waitFor(() => {
+        expect(inviteStaff).toHaveBeenCalledWith('new@salon.com');
+      });
+      expect(
+        await screen.findByText(
+          'נשלחה הזמנה ל-new@salon.com. העובד/ת יופיעו ברשימה לאחר השלמת ההרשמה.'
+        )
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText('אימייל להזמנה')).toHaveValue('');
+    });
+
+    it('validates the email before calling the api', async () => {
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'דנה לוי' });
+
+      fireEvent.change(screen.getByLabelText('אימייל להזמנה'), {
+        target: { value: 'not-an-email' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'שליחת הזמנה' }));
+
+      expect(await screen.findByText('נא להזין כתובת אימייל תקינה')).toBeInTheDocument();
+      expect(inviteStaff).not.toHaveBeenCalled();
+    });
+
+    it('shows ALREADY_EXISTS as a friendly Hebrew error', async () => {
+      inviteStaff.mockRejectedValue(new Error('ALREADY_EXISTS'));
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'דנה לוי' });
+
+      fireEvent.change(screen.getByLabelText('אימייל להזמנה'), {
+        target: { value: 'taken@salon.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'שליחת הזמנה' }));
+
+      expect(
+        await screen.findByText('קיים כבר חשבון עם האימייל הזה.')
+      ).toBeInTheDocument();
+    });
+
+    it('disables the form while the invite is in flight', async () => {
+      let resolveInvite;
+      inviteStaff.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveInvite = resolve;
+          })
+      );
+      render(<TeamPage />);
+      await screen.findByRole('heading', { name: 'דנה לוי' });
+
+      fireEvent.change(screen.getByLabelText('אימייל להזמנה'), {
+        target: { value: 'new@salon.com' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'שליחת הזמנה' }));
+
+      expect(await screen.findByRole('button', { name: 'שולח...' })).toBeDisabled();
+      expect(screen.getByLabelText('אימייל להזמנה')).toBeDisabled();
+
+      resolveInvite({ ok: true, email: 'new@salon.com' });
+      expect(
+        await screen.findByText(
+          'נשלחה הזמנה ל-new@salon.com. העובד/ת יופיעו ברשימה לאחר השלמת ההרשמה.'
+        )
+      ).toBeInTheDocument();
+    });
   });
 
   it('shows an error message when loading fails', async () => {
