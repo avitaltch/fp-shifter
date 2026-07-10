@@ -25,8 +25,8 @@ const Navbar = () => {
   const closeMenu = () => setIsOpen(false);
 
   const isStaff = role === 'Employee' || role === 'Admin';
-  // Admin has too many links for one row; also collapse on mid-size viewports.
-  const useDrawer = role === 'Admin' || isNarrow;
+  // Burger/drawer only on narrow viewports — never force it for Admin on desktop.
+  const useDrawer = isNarrow;
 
   useEffect(() => {
     const mq = window.matchMedia(DRAWER_MQ);

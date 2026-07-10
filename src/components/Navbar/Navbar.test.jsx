@@ -88,12 +88,12 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: /המשמרות שלי/ })).toBeInTheDocument();
   });
 
-  it('uses the drawer for Admin so the crowded link list does not overflow', () => {
+  it('keeps a horizontal nav for Admin on a wide viewport', () => {
     authAs('Admin');
     const { container } = renderNavbar();
 
-    expect(container.querySelector('.navbar')).toHaveClass('navbar--drawer');
-    expect(screen.getByRole('button', { name: /פתח תפריט/ })).toBeInTheDocument();
+    expect(container.querySelector('.navbar')).not.toHaveClass('navbar--drawer');
+    expect(screen.queryByRole('button', { name: /פתח תפריט/ })).not.toBeInTheDocument();
   });
 
   it('keeps a horizontal nav for Employee on a wide viewport', () => {
@@ -102,6 +102,23 @@ describe('Navbar', () => {
 
     expect(container.querySelector('.navbar')).not.toHaveClass('navbar--drawer');
     expect(screen.queryByRole('button', { name: /פתח תפריט/ })).not.toBeInTheDocument();
+  });
+
+  it('uses the drawer on a narrow viewport for Admin', () => {
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    authAs('Admin');
+    const { container } = renderNavbar();
+
+    expect(container.querySelector('.navbar')).toHaveClass('navbar--drawer');
+    expect(screen.getByRole('button', { name: /פתח תפריט/ })).toBeInTheDocument();
   });
 
   it('signs out via AuthContext and navigates to /login', async () => {
