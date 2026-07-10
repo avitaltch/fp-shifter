@@ -22,6 +22,7 @@ vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
       signInWithPassword: vi.fn(),
+      resetPasswordForEmail: vi.fn(),
     },
     from: vi.fn(),
   },
@@ -149,5 +150,35 @@ describe('LoginPage', () => {
       await screen.findByText('אירעה שגיאה. יש לנסות שוב.')
     ).toBeInTheDocument();
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('switches to reset mode and sends a password-reset email', async () => {
+    supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'שכחתי סיסמה' }));
+
+    expect(screen.getByRole('heading', { name: 'איפוס סיסמה' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('אימייל'), {
+      target: { value: 'staff@example.com' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'שלח קישור לאיפוס' }));
+
+    await waitFor(() => {
+      expect(supabase.auth.resetPasswordForEmail).toHaveBeenCalledWith(
+        'staff@example.com',
+        expect.objectContaining({ redirectTo: expect.stringContaining('/login') })
+      );
+    });
+    expect(
+      await screen.findByText(/נשלח אליה קישור לאיפוס סיסמה/)
+    ).toBeInTheDocument();
+  });
+
+  it('returns to the login form from reset mode', () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'שכחתי סיסמה' }));
+    fireEvent.click(screen.getByRole('button', { name: 'חזרה להתחברות' }));
+    expect(screen.getByRole('heading', { name: 'כניסת צוות' })).toBeInTheDocument();
   });
 });

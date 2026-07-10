@@ -12,8 +12,11 @@ drop trigger if exists on_auth_user_created on auth.users;
 drop function if exists public.handle_new_user() cascade;
 drop function if exists public.get_available_slots(date, uuid[]) cascade;
 drop function if exists public.book_appointment(text, text, text, text, date, time, uuid[], text) cascade;
+drop function if exists public.claim_shift(uuid) cascade;
+drop function if exists public.cancel_appointment(uuid) cascade;
 drop function if exists public.admin_set_user_role(uuid, text) cascade;
 drop function if exists public.qualified_employees(uuid[]) cascade;
+drop function if exists public.guard_appointment_item_columns() cascade;
 drop function if exists public.business_now() cascade;
 drop function if exists public.is_admin() cascade;
 drop function if exists public.role_of(uuid) cascade;
@@ -241,6 +244,50 @@ language sql security definer stable set search_path = public as $$
   select role from users where id = p_user_id;
 $$;
 
+-- Postgres grants EXECUTE to PUBLIC by default. These helpers bypass RLS
+-- (security definer), so lock them down: policies need them for the
+-- `authenticated` role, but anon gets nothing.
+revoke execute on function public.is_admin() from public, anon;
+revoke execute on function public.role_of(uuid) from public, anon;
+grant execute on function public.is_admin() to authenticated;
+grant execute on function public.role_of(uuid) to authenticated;
+
+-- ------------------------------------------------------------
+-- Column guard for appointment_items:
+-- RLS row policies cannot restrict WHICH columns change, so a
+-- (security invoker!) trigger pins everything except status/notes
+-- for non-admin clients. Definer RPCs (book_appointment,
+-- claim_shift, cancel_appointment) run as the function owner and
+-- are not affected.
+-- ------------------------------------------------------------
+create or replace function public.guard_appointment_item_columns()
+returns trigger
+language plpgsql set search_path = public as $$
+begin
+  -- Direct client writes arrive as anon/authenticated; trusted definer
+  -- RPCs and SQL-editor sessions run as their owner role.
+  if current_user not in ('anon', 'authenticated') or public.is_admin() then
+    return new;
+  end if;
+
+  if new.appointment_id   is distinct from old.appointment_id
+     or new.service_type_id is distinct from old.service_type_id
+     or new.user_id        is distinct from old.user_id
+     or new.work_date      is distinct from old.work_date
+     or new.start_time     is distinct from old.start_time
+     or new.end_time       is distinct from old.end_time
+     or new.deleted_at     is distinct from old.deleted_at then
+    raise exception 'FORBIDDEN_COLUMNS';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_appointment_item_columns on appointment_items;
+create trigger guard_appointment_item_columns
+  before update on appointment_items
+  for each row execute procedure public.guard_appointment_item_columns();
+
 -- ------------------------------------------------------------
 -- users
 -- ------------------------------------------------------------
@@ -338,20 +385,17 @@ to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
--- Employees may update their OWN items (e.g. progress status).
--- with check keeps user_id pinned to themselves — no reassigning to others.
+-- Employees may update their OWN items — and only status/notes: the
+-- guard_appointment_item_columns trigger (above) rejects any other column.
 create policy "Employees can update their own items"
 on appointment_items for update
 to authenticated
-using (user_id = auth.uid())
+using (user_id = auth.uid() and deleted_at is null)
 with check (user_id = auth.uid());
 
--- Employees may claim an UNASSIGNED item for themselves (volunteer flow).
-create policy "Employees can claim unassigned items"
-on appointment_items for update
-to authenticated
-using (user_id is null and deleted_at is null)
-with check (user_id = auth.uid());
+-- Claiming an unassigned item goes through the claim_shift RPC
+-- (functions.sql), which also enforces skills + availability.
+-- There is intentionally NO direct-update claim policy.
 
 -- ------------------------------------------------------------
 -- availabilities
@@ -450,10 +494,14 @@ begin
   from candidate c
   where c.start_ts > v_now -- no booking in the past (matters when p_date = today)
     and not exists (
-      select 1 from appointment_items ai
+      select 1
+      from appointment_items ai
+      join appointments ap on ap.id = ai.appointment_id
       where ai.user_id = c.user_id
         and ai.work_date = p_date
         and ai.deleted_at is null
+        and ap.deleted_at is null
+        and ap.status <> 'Cancelled' -- cancelled visits free their slots
         and tsrange((ai.work_date + ai.start_time)::timestamp,
                     (ai.work_date + ai.end_time)::timestamp)
             && tsrange(c.start_ts, c.end_ts)
@@ -524,6 +572,13 @@ begin
     raise exception 'SLOT_IN_PAST';
   end if;
 
+  -- ::time wraps past midnight, which would corrupt the chain and trip
+  -- check(start_time < end_time) with a cryptic error. Reject explicitly.
+  if (p_visit_date + p_start_time)::timestamp + make_interval(mins => v_total_duration)
+     >= (p_visit_date + 1)::timestamp then
+    raise exception 'PAST_MIDNIGHT';
+  end if;
+
   -- ---- pick an employee: qualified, available for the whole span, no conflicts.
   -- Least-loaded-first keeps assignments fair. ----
   select q.id into v_employee_id
@@ -535,10 +590,14 @@ begin
    and (p_visit_date + a.end_time)::timestamp
        >= (p_visit_date + p_start_time)::timestamp + make_interval(mins => v_total_duration)
   where not exists (
-    select 1 from appointment_items ai
+    select 1
+    from appointment_items ai
+    join appointments ap on ap.id = ai.appointment_id
     where ai.user_id = q.id
       and ai.work_date = p_visit_date
       and ai.deleted_at is null
+      and ap.deleted_at is null
+      and ap.status <> 'Cancelled'
       and tsrange((ai.work_date + ai.start_time)::timestamp,
                   (ai.work_date + ai.end_time)::timestamp)
           && tsrange((p_visit_date + p_start_time)::timestamp,
@@ -604,6 +663,96 @@ end;
 $$;
 
 -- ------------------------------------------------------------
+-- claim_shift — the only way an employee takes an unassigned item.
+-- Enforces what RLS cannot: the claimer must be qualified for the
+-- service, available for the whole span, and conflict-free. The
+-- guarded update + exclusion constraint handle concurrent claims.
+-- ------------------------------------------------------------
+create or replace function public.claim_shift(p_item_id uuid)
+returns json
+language plpgsql security definer set search_path = public as $$
+declare
+  v_uid uuid := auth.uid();
+  v_item record;
+begin
+  if v_uid is null then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  select ai.* into v_item
+  from appointment_items ai
+  join appointments ap on ap.id = ai.appointment_id
+  where ai.id = p_item_id
+    and ai.deleted_at is null
+    and ap.deleted_at is null
+    and ap.status <> 'Cancelled';
+
+  if not found then
+    raise exception 'SHIFT_TAKEN';
+  end if;
+
+  if not exists (
+    select 1 from employee_skills es
+    where es.user_id = v_uid and es.service_type_id = v_item.service_type_id
+  ) then
+    raise exception 'NOT_QUALIFIED';
+  end if;
+
+  if not exists (
+    select 1 from availabilities a
+    where a.user_id = v_uid
+      and a.available_date = v_item.work_date
+      and a.start_time <= v_item.start_time
+      and a.end_time >= v_item.end_time
+  ) then
+    raise exception 'NOT_AVAILABLE';
+  end if;
+
+  update appointment_items
+  set user_id = v_uid
+  where id = p_item_id and user_id is null;
+
+  if not found then
+    raise exception 'SHIFT_TAKEN';
+  end if;
+
+  return json_build_object('item_id', p_item_id, 'user_id', v_uid);
+
+exception
+  when exclusion_violation then
+    -- overlaps another assignment the claimer already has
+    raise exception 'SHIFT_CONFLICT';
+end;
+$$;
+
+-- ------------------------------------------------------------
+-- cancel_appointment — admin cancel that actually frees the slots:
+-- sets the status AND soft-deletes the items in one transaction, so
+-- the exclusion constraint stops blocking re-booking of that span.
+-- ------------------------------------------------------------
+create or replace function public.cancel_appointment(p_appointment_id uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then
+    raise exception 'FORBIDDEN';
+  end if;
+
+  update appointments
+  set status = 'Cancelled'
+  where id = p_appointment_id and deleted_at is null and status <> 'Cancelled';
+
+  if not found then
+    raise exception 'APPOINTMENT_NOT_FOUND';
+  end if;
+
+  update appointment_items
+  set deleted_at = now()
+  where appointment_id = p_appointment_id and deleted_at is null;
+end;
+$$;
+
+-- ------------------------------------------------------------
 -- admin_set_user_role — the only way to change a role
 -- ------------------------------------------------------------
 create or replace function public.admin_set_user_role(
@@ -619,19 +768,35 @@ begin
   if p_role not in ('Admin', 'Employee') then
     raise exception 'INVALID_ROLE';
   end if;
-  update users set role = p_role where id = p_user_id;
+  if auth.uid() = p_user_id then
+    -- an admin demoting themselves could lock everyone out
+    raise exception 'CANNOT_CHANGE_OWN_ROLE';
+  end if;
+  update users set role = p_role where id = p_user_id and deleted_at is null;
+  if not found then
+    raise exception 'USER_NOT_FOUND';
+  end if;
 end;
 $$;
 
 -- ------------------------------------------------------------
--- Grants: booking RPCs are public; role management is auth-only
--- (and self-guards with is_admin()).
+-- Grants. Postgres gives EXECUTE to PUBLIC by default, so every
+-- function is revoked first; only what clients need is granted back.
+-- qualified_employees/business_now are internal (called from the
+-- definer RPCs, which run as owner) — no client role needs them.
 -- ------------------------------------------------------------
+revoke execute on function public.business_now() from public, anon, authenticated;
+revoke execute on function public.qualified_employees(uuid[]) from public, anon, authenticated;
+revoke execute on function public.get_available_slots(date, uuid[]) from public;
 revoke execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) from public;
+revoke execute on function public.claim_shift(uuid) from public;
+revoke execute on function public.cancel_appointment(uuid) from public;
 revoke execute on function public.admin_set_user_role(uuid, text) from public;
 
 grant execute on function public.get_available_slots(date, uuid[]) to anon, authenticated;
 grant execute on function public.book_appointment(text, text, text, text, date, time, uuid[], text) to anon, authenticated;
+grant execute on function public.claim_shift(uuid) to authenticated;
+grant execute on function public.cancel_appointment(uuid) to authenticated;
 grant execute on function public.admin_set_user_role(uuid, text) to authenticated;
 
 -- ==================== demo services ====================

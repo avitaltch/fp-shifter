@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ProtectedRoute from './ProtectedRoute';
@@ -8,11 +8,19 @@ vi.mock('../../context/AuthContext', () => ({
   useAuth: vi.fn(),
 }));
 
-const authState = ({ role = null, session = null, loading = false } = {}) => ({
+const authState = ({
+  role = null,
+  session = null,
+  loading = false,
+  profileError = false,
+  retryProfile = vi.fn(),
+} = {}) => ({
   session,
   profile: role ? { first_name: 'דנה', last_name: 'לוי', role } : null,
   role,
   loading,
+  profileError,
+  retryProfile,
   signOut: vi.fn(),
 });
 
@@ -89,5 +97,24 @@ describe('ProtectedRoute', () => {
     renderProtected(undefined);
 
     expect(screen.getByText('Protected Content')).toBeInTheDocument();
+  });
+
+  it('shows a retry state (not a redirect) when the profile fetch failed', () => {
+    const retryProfile = vi.fn();
+    useAuth.mockReturnValue(
+      authState({
+        session: { user: { id: 'user-1' } },
+        profileError: true,
+        retryProfile,
+      })
+    );
+    renderProtected(['Admin']);
+
+    expect(screen.getByText('שגיאה בטעינת פרופיל המשתמש.')).toBeInTheDocument();
+    expect(screen.queryByText('Home Page')).not.toBeInTheDocument();
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'נסה שוב' }));
+    expect(retryProfile).toHaveBeenCalledTimes(1);
   });
 });

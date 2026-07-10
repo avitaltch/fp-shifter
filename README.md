@@ -10,25 +10,33 @@ Built with **React 19 + Vite** (Hebrew, RTL) and **Supabase** (Postgres, Auth, R
 src/
   lib/
     supabase.js      Supabase client (env-guarded)
-    api.js           ALL data access — pages never build queries themselves
+    api/             ALL data access, split by domain (services, booking,
+                     availability, shifts, assignment, dashboard, team)
+                     behind one facade — pages never build queries themselves
     dates.js         Local-time date helpers (never UTC-based)
     errors.js        RPC error code -> Hebrew message mapping
+  hooks/
+    useAsyncData.js  Fetch-on-mount lifecycle (data/loading/error/refetch)
+    useAction.js     Mutation lifecycle (busy row, friendly error, message)
   context/
     AuthContext.jsx  Single auth subscription; role comes from public.users
-  components/        Navbar, Footer, ProtectedRoute, EmptyState, ...
+  components/        Navbar, Footer, ProtectedRoute, PageHeader, Alert, ...
   pages/             One folder-less page per route
 supabase/
   schema.sql         Tables, constraints (incl. overlap-exclusion), triggers
-  rls.sql            Row Level Security policies (DB-enforced roles)
-  functions.sql      get_available_slots + book_appointment + admin_set_user_role
+  rls.sql            RLS policies + column-guard trigger (DB-enforced roles)
+  functions.sql      get_available_slots, book_appointment, claim_shift,
+                     cancel_appointment, admin_set_user_role
   seed.sql           Optional demo data
   migrate_v1_to_v2.sql  One-time migration for a pre-existing v1 database
 ```
 
 ### Security model
-- **Roles live in `public.users.role`**, guarded by RLS (`with check` pins a user's own role; only `admin_set_user_role` can change it). `user_metadata` is never trusted.
-- **Public sign-up is disabled** — employees are invited by an Admin (Supabase Dashboard → Authentication → Invite user). Anonymous visitors can only read the service catalog and call the two booking RPCs.
+- **Roles live in `public.users.role`**, guarded by RLS (`with check` pins a user's own role; only `admin_set_user_role` can change it — and never one's own). `user_metadata` is never trusted.
+- **Public sign-up is disabled** — employees are invited by an Admin (Supabase Dashboard → Authentication → Invite user). Anonymous visitors can only read the service catalog and call the two booking RPCs; the security-definer helper functions (`role_of`, `qualified_employees`, ...) are revoked from client roles.
 - **Booking is a transactional security-definer RPC** (`book_appointment`): server-side pricing, skill matching, availability + conflict checks, atomic customer/appointment/items creation. Double-booking is additionally blocked by a Postgres exclusion constraint.
+- **Employees can only change `status`/`notes` on their own items** — a column-guard trigger rejects every other column, so times, assignees, and soft-deletes can't be tampered with from the client. Claiming an open shift goes through the `claim_shift` RPC, which enforces skills, availability, and conflicts server-side.
+- **Cancelling** goes through `cancel_appointment` (admin-only RPC) which sets the status *and* soft-deletes the items in one transaction, so the booked span is genuinely freed for re-booking.
 - Client route guards (`ProtectedRoute`) are UX only; enforcement is in the database.
 
 ### Booking flow
@@ -50,6 +58,15 @@ supabase/
 6. `cp .env.example .env` and fill in the project URL + anon key.
 7. `npm install && npm run dev`
 
+## Deploy (Vercel)
+
+1. Import the repo in Vercel — the Vite framework preset is detected automatically (`npm run build`, output `dist/`).
+2. Add the environment variables (Project → Settings → Environment Variables):
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+3. `vercel.json` rewrites all routes to `index.html` so React Router deep links (e.g. `/login`, `/dashboard`) work on refresh.
+4. In Supabase, set Authentication → URL Configuration → Site URL to the Vercel production URL (and add preview URLs to Redirect URLs) so invite/recovery emails land back on the deployed app.
+
 ## Scripts
 
 | Command | What it does |
@@ -61,4 +78,4 @@ supabase/
 | `npm run lint` | Oxlint |
 | `npm run build` | Production build |
 
-CI (GitHub Actions) runs lint, unit tests, and the production build on every push/PR.
+CI (GitHub Actions) runs lint, unit tests, the production build, and Playwright e2e on every push/PR.

@@ -1,44 +1,52 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { listServices, createService, updateService, deleteService } from '../lib/api';
 import { friendlyError } from '../lib/errors';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import PageContainer from '../components/PageContainer/PageContainer';
+import PageHeader from '../components/PageHeader/PageHeader';
+import Alert from '../components/Alert/Alert';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import { Settings, Plus, Trash2, Edit2, Check, X } from 'lucide-react';
 import './ServiceManagementPage.css';
 
+const EMPTY_FORM = { name: '', description: '', base_price: '', default_duration: '' };
+
+// Client-side validation; returns { payload } or { error }.
+function validateServiceForm(formData) {
+  const price = parseFloat(formData.base_price);
+  const duration = parseInt(formData.default_duration, 10);
+
+  if (!formData.name.trim()) return { error: 'נא להזין שם שירות.' };
+  if (Number.isNaN(price) || price < 0) return { error: 'המחיר חייב להיות מספר חיובי.' };
+  if (Number.isNaN(duration) || duration <= 0) {
+    return { error: 'משך הטיפול חייב להיות מספר דקות חיובי.' };
+  }
+  return {
+    payload: {
+      name: formData.name.trim(),
+      description: formData.description.trim(),
+      base_price: price,
+      default_duration: duration,
+    },
+  };
+}
+
 const ServiceManagementPage = () => {
-  const [services, setServices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [formError, setFormError] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState(EMPTY_FORM);
 
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    base_price: '',
-    default_duration: ''
+  const fetchServices = useCallback(() => listServices(), []);
+  const { data, loading, error, refetch } = useAsyncData(fetchServices, {
+    errorMessage: 'שגיאה בטעינת השירותים.',
   });
+  const { message: deleteMessage, run } = useAction();
 
-  useEffect(() => {
-    fetchServices();
-  }, []);
-
-  const fetchServices = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setServices(await listServices());
-    } catch (err) {
-      console.error(err);
-      setError('שגיאה בטעינת השירותים.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const services = data ?? [];
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -46,7 +54,7 @@ const ServiceManagementPage = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', description: '', base_price: '', default_duration: '' });
+    setFormData(EMPTY_FORM);
     setIsAdding(false);
     setEditingId(null);
     setFormError(null);
@@ -54,40 +62,21 @@ const ServiceManagementPage = () => {
 
   const handleSave = async () => {
     setFormError(null);
-
-    const price = parseFloat(formData.base_price);
-    const duration = parseInt(formData.default_duration, 10);
-
-    if (!formData.name.trim()) {
-      setFormError('נא להזין שם שירות.');
-      return;
-    }
-    if (Number.isNaN(price) || price < 0) {
-      setFormError('המחיר חייב להיות מספר חיובי.');
-      return;
-    }
-    if (Number.isNaN(duration) || duration <= 0) {
-      setFormError('משך הטיפול חייב להיות מספר דקות חיובי.');
+    const { payload, error: validationError } = validateServiceForm(formData);
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
 
     setSaving(true);
     try {
-      const payload = {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-        base_price: price,
-        default_duration: duration
-      };
-
       if (editingId) {
         await updateService(editingId, payload);
       } else {
         await createService(payload);
       }
-
       resetForm();
-      fetchServices();
+      refetch();
     } catch (err) {
       console.error(err);
       const isDuplicate = (err?.message || '').includes('service_types_name_unique');
@@ -101,15 +90,10 @@ const ServiceManagementPage = () => {
 
   const handleDelete = async (id) => {
     if (!window.confirm('האם אתה בטוח שברצונך למחוק שירות זה? תורים קיימים לא יימחקו.')) return;
-
-    try {
-      setError(null);
-      await deleteService(id);
-      fetchServices();
-    } catch (err) {
-      console.error(err);
-      setError(friendlyError(err, 'שגיאה במחיקת השירות.'));
-    }
+    const { ok } = await run(id, () => deleteService(id), {
+      errorFallback: 'שגיאה במחיקת השירות.',
+    });
+    if (ok) refetch();
   };
 
   const startEdit = (service) => {
@@ -126,11 +110,11 @@ const ServiceManagementPage = () => {
 
   return (
     <PageContainer size="md" className="service-management-page">
-      <header className="page-header">
-        <Settings size={32} className="header-icon" />
-        <h1>ניהול שירותים</h1>
-        <p>הוסף, ערוך ומחק את סוגי השירותים שהעסק מציע</p>
-      </header>
+      <PageHeader
+        icon={Settings}
+        title="ניהול שירותים"
+        subtitle="הוסף, ערוך ומחק את סוגי השירותים שהעסק מציע"
+      />
 
       <div className="actions-bar">
         {!isAdding && !editingId && (
@@ -161,7 +145,7 @@ const ServiceManagementPage = () => {
               <textarea id="service-desc" name="description" value={formData.description} onChange={handleInputChange} placeholder="תיאור קצר של השירות..." />
             </div>
           </div>
-          {formError && <p className="error-text">{formError}</p>}
+          <Alert type="error">{formError}</Alert>
           <div className="form-actions">
             <button className="btn-primary" onClick={handleSave} disabled={saving}>
               <Check size={18} /> {saving ? 'שומר...' : 'שמור'}
@@ -174,7 +158,8 @@ const ServiceManagementPage = () => {
       )}
 
       {loading && <LoadingSpinner text="טוען שירותים..." />}
-      {error && <p className="error-text">{error}</p>}
+      <Alert type="error">{error}</Alert>
+      <Alert type={deleteMessage?.type}>{deleteMessage?.text}</Alert>
 
       {!loading && !error && services.length === 0 && !isAdding && (
         <EmptyState icon={Settings} text="לא נמצאו שירותים. הוסף את השירות הראשון שלך!" />

@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Users, Calendar, Clock, ArrowLeft } from 'lucide-react';
-import { getDashboardData } from '../lib/api';
+import { useCallback } from 'react';
+import { Users, Calendar, Clock, ArrowLeft, XCircle } from 'lucide-react';
+import { getDashboardData, cancelAppointment } from '../lib/api';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import { todayString, addDaysString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
+import Alert from '../components/Alert/Alert';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import EmptyState from '../components/EmptyState/EmptyState';
 import './ManagerDashboardPage.css';
@@ -14,27 +17,34 @@ const STATUS_LABELS = {
 };
 
 const ManagerDashboardPage = () => {
-  const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // Cancelled appointments are filtered out in the query
+  const fetchDashboard = useCallback(
+    async () => (await getDashboardData(todayString(), addDaysString(6))).appointments || [],
+    []
+  );
+  const { data, setData, loading, error, refetch } = useAsyncData(fetchDashboard, {
+    errorMessage: 'שגיאה בטעינת נתוני הדאשבורד.',
+  });
+  // A failed cancel usually means the list is stale — refetch on error.
+  const { busyKey: cancellingId, message, run } = useAction({ onError: refetch });
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        // Cancelled appointments are filtered out in the query
-        const { appointments: data } = await getDashboardData(todayString(), addDaysString(6));
-        setAppointments(data || []);
-      } catch (err) {
-        console.error(err);
-        setError('שגיאה בטעינת נתוני הדאשבורד.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const appointments = data ?? [];
 
-    fetchDashboardData();
-  }, []);
+  const handleCancel = async (apt) => {
+    const customerName = `${apt.customers?.first_name || ''} ${apt.customers?.last_name || ''}`.trim();
+    const confirmed = window.confirm(
+      `לבטל את התור של ${customerName || 'הלקוח/ה'} ב-${formatHebrewDate(apt.visit_date)}? השעות ישוחררו להזמנות חדשות.`
+    );
+    if (!confirmed) return;
+
+    // cancel_appointment RPC: status + item soft-delete in one transaction,
+    // so the booked span is actually freed for new bookings.
+    const { ok } = await run(apt.id, () => cancelAppointment(apt.id), {
+      success: 'התור בוטל והשעות שוחררו.',
+      errorFallback: 'שגיאה בביטול התור.',
+    });
+    if (ok) setData((prev) => prev.filter((a) => a.id !== apt.id));
+  };
 
   if (loading) return (
     <PageContainer size="lg" className="dashboard-page">
@@ -67,6 +77,8 @@ const ManagerDashboardPage = () => {
         <h1>דאשבורד מנהל - תמונת מצב יומית</h1>
         <p className="date-display">{formatHebrewDate(todayStr)}</p>
       </header>
+
+      <Alert type={message?.type}>{message?.text}</Alert>
 
       <div className="stats-grid">
         <div className="stat-card">
@@ -113,9 +125,21 @@ const ManagerDashboardPage = () => {
                 <div key={apt.id} className="appointment-card">
                   <div className="apt-header">
                     <h3>לקוח/ה: {apt.customers?.first_name} {apt.customers?.last_name}</h3>
-                    <span className={`status-badge ${(apt.status || 'Pending').toLowerCase()}`}>
-                      {STATUS_LABELS[apt.status] || apt.status}
-                    </span>
+                    <div className="apt-header-actions">
+                      <span className={`status-badge ${(apt.status || 'Pending').toLowerCase()}`}>
+                        {STATUS_LABELS[apt.status] || apt.status}
+                      </span>
+                      <button
+                        type="button"
+                        className="cancel-apt-btn"
+                        onClick={() => handleCancel(apt)}
+                        disabled={cancellingId !== null}
+                        aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
+                      >
+                        <XCircle size={16} />
+                        {cancellingId === apt.id ? 'מבטל...' : 'ביטול תור'}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="timeline-chain">
@@ -156,7 +180,19 @@ const ManagerDashboardPage = () => {
                     {formatHebrewDate(apt.visit_date)} | {apt.customers?.first_name}{' '}
                     {apt.customers?.last_name}
                   </h3>
-                  <span className="compact-details">{apt.appointment_items?.length || 0} טיפולים</span>
+                  <div className="apt-header-actions">
+                    <span className="compact-details">{apt.appointment_items?.length || 0} טיפולים</span>
+                    <button
+                      type="button"
+                      className="cancel-apt-btn"
+                      onClick={() => handleCancel(apt)}
+                      disabled={cancellingId !== null}
+                      aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
+                    >
+                      <XCircle size={16} />
+                      {cancellingId === apt.id ? 'מבטל...' : 'ביטול'}
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

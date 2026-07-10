@@ -34,6 +34,50 @@ language sql security definer stable set search_path = public as $$
   select role from users where id = p_user_id;
 $$;
 
+-- Postgres grants EXECUTE to PUBLIC by default. These helpers bypass RLS
+-- (security definer), so lock them down: policies need them for the
+-- `authenticated` role, but anon gets nothing.
+revoke execute on function public.is_admin() from public, anon;
+revoke execute on function public.role_of(uuid) from public, anon;
+grant execute on function public.is_admin() to authenticated;
+grant execute on function public.role_of(uuid) to authenticated;
+
+-- ------------------------------------------------------------
+-- Column guard for appointment_items:
+-- RLS row policies cannot restrict WHICH columns change, so a
+-- (security invoker!) trigger pins everything except status/notes
+-- for non-admin clients. Definer RPCs (book_appointment,
+-- claim_shift, cancel_appointment) run as the function owner and
+-- are not affected.
+-- ------------------------------------------------------------
+create or replace function public.guard_appointment_item_columns()
+returns trigger
+language plpgsql set search_path = public as $$
+begin
+  -- Direct client writes arrive as anon/authenticated; trusted definer
+  -- RPCs and SQL-editor sessions run as their owner role.
+  if current_user not in ('anon', 'authenticated') or public.is_admin() then
+    return new;
+  end if;
+
+  if new.appointment_id   is distinct from old.appointment_id
+     or new.service_type_id is distinct from old.service_type_id
+     or new.user_id        is distinct from old.user_id
+     or new.work_date      is distinct from old.work_date
+     or new.start_time     is distinct from old.start_time
+     or new.end_time       is distinct from old.end_time
+     or new.deleted_at     is distinct from old.deleted_at then
+    raise exception 'FORBIDDEN_COLUMNS';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_appointment_item_columns on appointment_items;
+create trigger guard_appointment_item_columns
+  before update on appointment_items
+  for each row execute procedure public.guard_appointment_item_columns();
+
 -- ------------------------------------------------------------
 -- users
 -- ------------------------------------------------------------
@@ -131,20 +175,17 @@ to authenticated
 using (public.is_admin())
 with check (public.is_admin());
 
--- Employees may update their OWN items (e.g. progress status).
--- with check keeps user_id pinned to themselves — no reassigning to others.
+-- Employees may update their OWN items — and only status/notes: the
+-- guard_appointment_item_columns trigger (above) rejects any other column.
 create policy "Employees can update their own items"
 on appointment_items for update
 to authenticated
-using (user_id = auth.uid())
+using (user_id = auth.uid() and deleted_at is null)
 with check (user_id = auth.uid());
 
--- Employees may claim an UNASSIGNED item for themselves (volunteer flow).
-create policy "Employees can claim unassigned items"
-on appointment_items for update
-to authenticated
-using (user_id is null and deleted_at is null)
-with check (user_id = auth.uid());
+-- Claiming an unassigned item goes through the claim_shift RPC
+-- (functions.sql), which also enforces skills + availability.
+-- There is intentionally NO direct-update claim policy.
 
 -- ------------------------------------------------------------
 -- availabilities

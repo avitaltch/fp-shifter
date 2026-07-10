@@ -45,3 +45,15 @@
 .link-btn:hover {
   text-decoration: underline;
 }
+
+.reset-hint {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.invite-note {
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}

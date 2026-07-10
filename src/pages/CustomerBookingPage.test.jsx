@@ -39,14 +39,13 @@ const renderPage = () =>
 // otherwise jsdom constraint validation blocks the form submission).
 const visitDate = addDaysString(7);
 
-// Picks a date + slot and fills personal details (service already selected).
+// Picks a date + slot chip and fills personal details (service already selected).
 async function completeForm({ phone = '050-1234567' } = {}) {
   fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
     target: { value: visitDate },
   });
 
-  const timeSelect = await screen.findByLabelText('שעות פנויות');
-  fireEvent.change(timeSelect, { target: { value: '10:00:00' } });
+  fireEvent.click(await screen.findByRole('button', { name: '10:00' }));
 
   fireEvent.change(screen.getByLabelText('שם פרטי'), { target: { value: 'דנה' } });
   fireEvent.change(screen.getByLabelText('שם משפחה'), { target: { value: 'לוי' } });
@@ -90,7 +89,7 @@ describe('CustomerBookingPage', () => {
     expect(screen.getByText('שעה ו-45 דקות')).toBeInTheDocument();
   });
 
-  it('fetches slots with the chosen date and service ids and lists them as HH:MM', async () => {
+  it('fetches slots with the chosen date and service ids and shows them as HH:MM chips', async () => {
     renderPage();
 
     fireEvent.click(await screen.findByText('תספורת'));
@@ -102,12 +101,26 @@ describe('CustomerBookingPage', () => {
       expect(getAvailableSlots).toHaveBeenCalledWith(visitDate, ['s1']);
     });
 
-    const timeSelect = await screen.findByLabelText('שעות פנויות');
-    const options = Array.from(timeSelect.querySelectorAll('option')).map(
-      (o) => o.textContent
+    expect(await screen.findByRole('button', { name: '10:00' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '11:00' })).toBeInTheDocument();
+  });
+
+  it('marks the chosen slot chip as selected', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+
+    const chip = await screen.findByRole('button', { name: '10:00' });
+    fireEvent.click(chip);
+
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '11:00' })).toHaveAttribute(
+      'aria-pressed',
+      'false'
     );
-    expect(options).toContain('10:00');
-    expect(options).toContain('11:00');
   });
 
   it('shows a message when there are no free slots for the date', async () => {
@@ -196,6 +209,43 @@ describe('CustomerBookingPage', () => {
     // The stale slot list is refetched so the user can pick a new time
     await waitFor(() => {
       expect(getAvailableSlots).toHaveBeenCalledWith(visitDate, ['s1']);
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('shows a friendly error when loading slots fails', async () => {
+    getAvailableSlots.mockRejectedValue(new Error('network'));
+
+    renderPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+
+    expect(
+      await screen.findByText('שגיאה בטעינת השעות הפנויות.')
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the SLOT_TAKEN message and clears chips when the post-race refetch also fails', async () => {
+    bookAppointment.mockRejectedValue(new Error('SLOT_TAKEN'));
+
+    renderPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    await completeForm();
+
+    // After the lost race, the refresh of free slots also fails
+    getAvailableSlots.mockRejectedValue(new Error('network'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'אישור הזמנה' }));
+
+    expect(
+      await screen.findByText('השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.')
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
     });
     expect(mockNavigate).not.toHaveBeenCalled();
   });

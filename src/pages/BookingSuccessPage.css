@@ -34,3 +34,18 @@
 .home-link:hover {
   opacity: 0.9;
 }
+
+@media (max-width: 480px) {
+  .booking-details {
+    padding: 1.15rem;
+    margin: 1.5rem 0;
+  }
+
+  .home-link {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+    align-items: center;
+  }
+}

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
 // Single source of truth for auth. The role comes from public.users (enforced
@@ -8,6 +8,8 @@ const AuthContext = createContext({
   profile: null,
   role: null,
   loading: true,
+  profileError: false,
+  retryProfile: () => {},
   signOut: () => {},
 });
 
@@ -15,33 +17,40 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [profileError, setProfileError] = useState(false);
+
+  // A failed profile fetch must be distinguishable from "not logged in":
+  // otherwise a network/RLS hiccup silently bounces the user off protected
+  // routes with no explanation.
+  const loadProfile = useCallback(async (currentSession, isCancelled = () => false) => {
+    if (!currentSession) {
+      if (!isCancelled()) {
+        setProfile(null);
+        setProfileError(false);
+        setLoading(false);
+      }
+      return;
+    }
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, role')
+      .eq('id', currentSession.user.id)
+      .single();
+    if (!isCancelled()) {
+      setProfile(error ? null : data);
+      setProfileError(Boolean(error));
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function loadProfile(currentSession) {
-      if (!currentSession) {
-        if (!cancelled) {
-          setProfile(null);
-          setLoading(false);
-        }
-        return;
-      }
-      const { data } = await supabase
-        .from('users')
-        .select('id, first_name, last_name, role')
-        .eq('id', currentSession.user.id)
-        .single();
-      if (!cancelled) {
-        setProfile(data ?? null);
-        setLoading(false);
-      }
-    }
+    const isCancelled = () => cancelled;
 
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       if (cancelled) return;
       setSession(s);
-      loadProfile(s);
+      loadProfile(s, isCancelled);
     });
 
     const {
@@ -49,14 +58,19 @@ export function AuthProvider({ children }) {
     } = supabase.auth.onAuthStateChange((_event, s) => {
       if (cancelled) return;
       setSession(s);
-      loadProfile(s);
+      loadProfile(s, isCancelled);
     });
 
     return () => {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [loadProfile]);
+
+  const retryProfile = useCallback(() => {
+    setLoading(true);
+    loadProfile(session);
+  }, [loadProfile, session]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -67,6 +81,8 @@ export function AuthProvider({ children }) {
     profile,
     role: profile?.role ?? null,
     loading,
+    profileError,
+    retryProfile,
     signOut,
   };
 
