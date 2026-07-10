@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import LoginPage from './LoginPage';
 import { supabase } from '../lib/supabase';
 
@@ -23,12 +23,14 @@ vi.mock('../lib/supabase', () => ({
     auth: {
       signInWithPassword: vi.fn(),
       resetPasswordForEmail: vi.fn(),
+      updateUser: vi.fn(),
+      getSession: vi.fn(),
+      onAuthStateChange: vi.fn(),
     },
     from: vi.fn(),
   },
 }));
 
-// supabase.from('users').select('role').eq('id', ...).single()
 function mockProfileFetch(profile) {
   const single = vi.fn().mockResolvedValue({ data: profile, error: null });
   const eq = vi.fn().mockReturnValue({ single });
@@ -47,20 +49,37 @@ const fillAndSubmit = () => {
   fireEvent.click(screen.getByRole('button', { name: 'התחברות' }));
 };
 
+async function waitForLoginForm() {
+  expect(await screen.findByRole('heading', { name: 'כניסת צוות' })).toBeInTheDocument();
+}
+
 describe('LoginPage', () => {
+  let authChangeCb;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseLocation.mockReturnValue({ pathname: '/login', state: null });
+    window.history.replaceState({}, '', '/login');
+    authChangeCb = null;
+    supabase.auth.onAuthStateChange.mockImplementation((cb) => {
+      authChangeCb = cb;
+      return { data: { subscription: { unsubscribe: vi.fn() } } };
+    });
+    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
     supabase.auth.signInWithPassword.mockResolvedValue({
       data: { user: { id: 'user-1' } },
       error: null,
     });
   });
 
-  it('renders a login-only form (no sign-up UI)', () => {
-    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+  afterEach(() => {
+    window.history.replaceState({}, '', '/');
+  });
 
-    expect(screen.getByText('כניסת צוות')).toBeInTheDocument();
+  it('renders a login-only form (no sign-up UI)', async () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+
     expect(screen.getByLabelText('אימייל')).toBeInTheDocument();
     expect(screen.getByLabelText('סיסמה')).toBeInTheDocument();
     expect(screen.queryByText(/הרשמה/)).not.toBeInTheDocument();
@@ -73,6 +92,7 @@ describe('LoginPage', () => {
     const chain = mockProfileFetch({ role: 'Employee' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fillAndSubmit();
 
     await waitFor(() => {
@@ -91,6 +111,7 @@ describe('LoginPage', () => {
     mockProfileFetch({ role: 'Admin' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fillAndSubmit();
 
     await waitFor(() => {
@@ -102,6 +123,7 @@ describe('LoginPage', () => {
     mockProfileFetch({ role: 'Employee' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fillAndSubmit();
 
     await waitFor(() => {
@@ -117,6 +139,7 @@ describe('LoginPage', () => {
     mockProfileFetch({ role: 'Admin' });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fillAndSubmit();
 
     await waitFor(() => {
@@ -131,6 +154,7 @@ describe('LoginPage', () => {
     });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fillAndSubmit();
 
     expect(
@@ -144,6 +168,7 @@ describe('LoginPage', () => {
     supabase.auth.signInWithPassword.mockRejectedValue(new Error('network down'));
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fillAndSubmit();
 
     expect(
@@ -156,6 +181,7 @@ describe('LoginPage', () => {
     supabase.auth.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
 
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fireEvent.click(screen.getByRole('button', { name: 'שכחתי סיסמה' }));
 
     expect(screen.getByRole('heading', { name: 'איפוס סיסמה' })).toBeInTheDocument();
@@ -175,10 +201,82 @@ describe('LoginPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('returns to the login form from reset mode', () => {
+  it('returns to the login form from reset mode', async () => {
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
     fireEvent.click(screen.getByRole('button', { name: 'שכחתי סיסמה' }));
     fireEvent.click(screen.getByRole('button', { name: 'חזרה להתחברות' }));
     expect(screen.getByRole('heading', { name: 'כניסת צוות' })).toBeInTheDocument();
+  });
+
+  it('opens set-password mode from an invite link hash', async () => {
+    window.history.replaceState({}, '', '/login#type=invite&access_token=fake');
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+
+    expect(await screen.findByRole('heading', { name: 'הגדרת סיסמה' })).toBeInTheDocument();
+    expect(screen.getByText(/ההזמנה אושרה/)).toBeInTheDocument();
+    expect(screen.getByLabelText('סיסמה חדשה')).toBeInTheDocument();
+  });
+
+  it('opens set-password mode on PASSWORD_RECOVERY auth event', async () => {
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await waitForLoginForm();
+
+    authChangeCb('PASSWORD_RECOVERY', { user: { id: 'user-1' } });
+
+    expect(await screen.findByRole('heading', { name: 'הגדרת סיסמה' })).toBeInTheDocument();
+  });
+
+  it('saves a new password via updateUser and navigates home', async () => {
+    window.history.replaceState({}, '', '/login#type=invite');
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    supabase.auth.updateUser.mockResolvedValue({
+      data: { user: { id: 'user-1' } },
+      error: null,
+    });
+    mockProfileFetch({ role: 'Admin' });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'הגדרת סיסמה' });
+
+    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), {
+      target: { value: 'newpass1' },
+    });
+    fireEvent.change(screen.getByLabelText('אימות סיסמה'), {
+      target: { value: 'newpass1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'שמור סיסמה והמשך' }));
+
+    await waitFor(() => {
+      expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: 'newpass1' });
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/admin/dashboard', { replace: true });
+  });
+
+  it('rejects mismatched passwords without calling updateUser', async () => {
+    window.history.replaceState({}, '', '/login#type=recovery');
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await screen.findByRole('heading', { name: 'הגדרת סיסמה' });
+
+    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), {
+      target: { value: 'newpass1' },
+    });
+    fireEvent.change(screen.getByLabelText('אימות סיסמה'), {
+      target: { value: 'other' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'שמור סיסמה והמשך' }));
+
+    expect(await screen.findByText('הסיסמאות אינן תואמות.')).toBeInTheDocument();
+    expect(supabase.auth.updateUser).not.toHaveBeenCalled();
   });
 });
