@@ -30,12 +30,25 @@
   padding: 0;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: 'Assistant', sans-serif;
   background-color: var(--bg-app);
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Prevent iOS Safari from zooming into focused fields (< 16px triggers it) */
+input,
+select,
+textarea {
+  font-size: 1rem;
+  font-family: inherit;
 }
 
 a {
@@ -48,6 +61,39 @@ button {
   cursor: pointer;
   border: none;
   background: none;
+}
+
+/* Visible keyboard focus everywhere, without the fuzzy default outline */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Referenced across pages (booking sections, spinners, page fades) —
+   was never actually defined before, so nothing animated. */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Utilities */
@@ -65,25 +111,105 @@ button {
 }
 
 .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   background-color: var(--primary);
   color: white;
   padding: 0.75rem 1.5rem;
+  min-height: 44px;
   border-radius: var(--radius-md);
   font-weight: 600;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, transform 0.1s;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background-color: #1d4ed8; /* darker blue */
 }
 
+.btn-primary:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   background-color: var(--secondary);
   color: var(--primary);
   padding: 0.75rem 1.5rem;
+  min-height: 44px;
   border-radius: var(--radius-md);
   font-weight: 600;
   transition: background-color 0.2s;
+}
+
+/* Shared primary submit used by booking, login, availability */
+.submit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 0.75rem 2rem;
+  min-height: 48px;
+  border-radius: var(--radius-md);
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.submit-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.submit-btn:disabled {
+  background: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Shift status advance button (My Shifts) */
+.status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  min-height: 40px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.status-btn.scheduled {
+  background: var(--secondary);
+  color: var(--primary);
+  border-color: #bfdbfe;
+}
+
+.status-btn.in_progress {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.status-btn.done {
+  background: var(--success-light);
+  color: #065f46;
+  cursor: default;
 }
 
 .btn-secondary:hover {
@@ -167,4 +293,43 @@ button {
 .stat-card.alert-card {
   border: 1px solid #fecaca;
   background: #fef2f2;
+}
+
+/* ---- Mobile foundations ---- */
+@media (max-width: 768px) {
+  .card {
+    padding: 1.15rem;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .submit-btn {
+    width: 100%;
+  }
+
+  .availability-entry {
+    padding: 0.75rem 0.9rem;
+    gap: 0.75rem;
+  }
+
+  .availability-entry .delete-btn {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.45rem;
+    line-height: 1.3;
+  }
+
+  .page-header p {
+    font-size: 0.95rem;
+  }
 }

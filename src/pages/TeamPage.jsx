@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { Briefcase, ShieldCheck, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { listStaffWithSkills, listServices, addSkill, removeSkill, setUserRole } from '../lib/api';
-import { friendlyError } from '../lib/errors';
+import { useAsyncData } from '../hooks/useAsyncData';
+import { useAction } from '../hooks/useAction';
 import PageContainer from '../components/PageContainer/PageContainer';
+import PageHeader from '../components/PageHeader/PageHeader';
+import Alert from '../components/Alert/Alert';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './TeamPage.css';
@@ -13,58 +16,44 @@ import './TeamPage.css';
 // assignment page. New employees are invited from the Supabase dashboard.
 const TeamPage = () => {
   const { session } = useAuth();
-  const [staff, setStaff] = useState([]);
-  const [skills, setSkills] = useState([]);
-  const [services, setServices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [message, setMessage] = useState(null);
-  const [busyKey, setBusyKey] = useState(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const [{ staff: staffData, skills: skillsData }, servicesData] = await Promise.all([
-        listStaffWithSkills(),
-        listServices(),
-      ]);
-      setStaff(staffData);
-      setSkills(skillsData);
-      setServices(servicesData);
-    } catch (err) {
-      console.error(err);
-      setError('שגיאה בטעינת נתוני הצוות.');
-    } finally {
-      setLoading(false);
-    }
+  const fetchTeam = useCallback(async () => {
+    const [{ staff, skills }, services] = await Promise.all([
+      listStaffWithSkills(),
+      listServices(),
+    ]);
+    return { staff, skills, services };
   }, []);
+  const { data, setData, loading, error } = useAsyncData(fetchTeam, {
+    errorMessage: 'שגיאה בטעינת נתוני הצוות.',
+  });
+  const { busyKey, message, setMessage, run } = useAction();
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const staff = data?.staff ?? [];
+  const skills = data?.skills ?? [];
+  const services = data?.services ?? [];
 
   const toggleSkill = async (employee, service) => {
     const existing = skills.find(
       (s) => s.user_id === employee.id && s.service_type_id === service.id
     );
     const key = `${employee.id}:${service.id}`;
-    setBusyKey(key);
-    setMessage(null);
-    try {
-      if (existing) {
-        await removeSkill(existing.id);
-        setSkills((prev) => prev.filter((s) => s.id !== existing.id));
-      } else {
-        const created = await addSkill(employee.id, service.id);
-        setSkills((prev) => [...prev, created]);
-      }
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: friendlyError(err, 'שגיאה בעדכון המיומנות.') });
-    } finally {
-      setBusyKey(null);
-    }
+    await run(
+      key,
+      async () => {
+        if (existing) {
+          await removeSkill(existing.id);
+          setData((prev) => ({
+            ...prev,
+            skills: prev.skills.filter((s) => s.id !== existing.id),
+          }));
+        } else {
+          const created = await addSkill(employee.id, service.id);
+          setData((prev) => ({ ...prev, skills: [...prev.skills, created] }));
+        }
+      },
+      { errorFallback: 'שגיאה בעדכון המיומנות.' }
+    );
   };
 
   const changeRole = async (employee, role) => {
@@ -76,33 +65,29 @@ const TeamPage = () => {
     if (!window.confirm(`לשנות את התפקיד של ${employee.first_name} ל-${role === 'Admin' ? 'מנהל' : 'עובד'}?`)) {
       return;
     }
-    setMessage(null);
-    try {
-      await setUserRole(employee.id, role);
-      setStaff((prev) => prev.map((u) => (u.id === employee.id ? { ...u, role } : u)));
-      setMessage({ type: 'success', text: 'התפקיד עודכן בהצלחה.' });
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: friendlyError(err, 'שגיאה בעדכון התפקיד.') });
+    const { ok } = await run(employee.id, () => setUserRole(employee.id, role), {
+      success: 'התפקיד עודכן בהצלחה.',
+      errorFallback: 'שגיאה בעדכון התפקיד.',
+    });
+    if (ok) {
+      setData((prev) => ({
+        ...prev,
+        staff: prev.staff.map((u) => (u.id === employee.id ? { ...u, role } : u)),
+      }));
     }
   };
 
   return (
     <PageContainer size="lg" className="team-page">
-      <header className="page-header">
-        <Briefcase size={32} className="header-icon" />
-        <h1>ניהול צוות</h1>
-        <p>
-          ניהול תפקידים ומיומנויות. עובדים חדשים מצטרפים בהזמנה בלבד
-          (Supabase → Authentication → Invite user).
-        </p>
-      </header>
+      <PageHeader
+        icon={Briefcase}
+        title="ניהול צוות"
+        subtitle="ניהול תפקידים ומיומנויות. עובדים חדשים מצטרפים בהזמנה בלבד (Supabase → Authentication → Invite user)."
+      />
 
       {loading && <LoadingSpinner text="טוען צוות..." />}
-      {error && <p className="error-text">{error}</p>}
-      {message && (
-        <p className={message.type === 'error' ? 'error-text' : 'success-text'}>{message.text}</p>
-      )}
+      <Alert type="error">{error}</Alert>
+      <Alert type={message?.type}>{message?.text}</Alert>
 
       {!loading && !error && staff.length === 0 && (
         <EmptyState text="אין עדיין חברי צוות. הזמינו עובדים דרך לוח הבקרה של Supabase." />

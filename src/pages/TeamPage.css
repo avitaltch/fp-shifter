@@ -83,3 +83,24 @@
   color: #6b7280;
   font-size: 0.9rem;
 }
+
+@media (max-width: 600px) {
+  .team-page .team-card {
+    padding: 1rem;
+  }
+
+  .team-page .team-member {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .team-page .role-select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .team-page .skill-chip {
+    min-height: 40px;
+    padding: 0.45rem 0.9rem;
+  }
+}

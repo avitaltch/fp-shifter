@@ -1,11 +1,12 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ManagerDashboardPage from './ManagerDashboardPage';
-import { getDashboardData } from '../lib/api';
+import { getDashboardData, cancelAppointment } from '../lib/api';
 import { todayString, addDaysString } from '../lib/dates';
 
 vi.mock('../lib/api', () => ({
   getDashboardData: vi.fn(),
+  cancelAppointment: vi.fn(),
 }));
 
 const buildAppointments = () => {
@@ -118,5 +119,73 @@ describe('ManagerDashboardPage', () => {
     expect(
       await screen.findByText('שגיאה בטעינת נתוני הדאשבורד.')
     ).toBeInTheDocument();
+  });
+
+  describe('cancelling an appointment', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('cancels after confirmation and removes the appointment from the view', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      cancelAppointment.mockResolvedValue(null);
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/לקוח\/ה: רות מזרחי/);
+
+      fireEvent.click(screen.getAllByRole('button', { name: /ביטול/ })[0]);
+
+      await waitFor(() => {
+        expect(cancelAppointment).toHaveBeenCalledWith('apt-1');
+      });
+      expect(await screen.findByText('התור בוטל והשעות שוחררו.')).toBeInTheDocument();
+      expect(screen.queryByText(/לקוח\/ה: רות מזרחי/)).not.toBeInTheDocument();
+    });
+
+    it('does nothing when the confirmation is dismissed', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/לקוח\/ה: רות מזרחי/);
+
+      fireEvent.click(screen.getAllByRole('button', { name: /ביטול/ })[0]);
+
+      expect(cancelAppointment).not.toHaveBeenCalled();
+      expect(screen.getByText(/לקוח\/ה: רות מזרחי/)).toBeInTheDocument();
+    });
+
+    it('surfaces a friendly error and refetches when the cancel fails', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      cancelAppointment.mockRejectedValue(new Error('FORBIDDEN'));
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/לקוח\/ה: רות מזרחי/);
+      getDashboardData.mockClear();
+
+      fireEvent.click(screen.getAllByRole('button', { name: /ביטול/ })[0]);
+
+      expect(
+        await screen.findByText('אין לך הרשאה לבצע פעולה זו.')
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(getDashboardData).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('cancels a future appointment from the upcoming-days section', async () => {
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      cancelAppointment.mockResolvedValue(null);
+
+      render(<ManagerDashboardPage />);
+      await screen.findByText(/יעל כהן/);
+
+      fireEvent.click(screen.getByRole('button', { name: 'ביטול התור של יעל' }));
+
+      await waitFor(() => {
+        expect(cancelAppointment).toHaveBeenCalledWith('apt-2');
+      });
+      expect(await screen.findByText('התור בוטל והשעות שוחררו.')).toBeInTheDocument();
+      expect(screen.queryByText(/יעל כהן/)).not.toBeInTheDocument();
+    });
   });
 });
