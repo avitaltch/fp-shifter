@@ -46,9 +46,16 @@ Primary buyer: owner/manager of a single-location service business (salon, clini
 | **Manage / cancel a booking** | [/book/manage](https://fp-shifter.vercel.app/book/manage) with confirmation number + phone from the success page |
 | **Staff login** | [/login](https://fp-shifter.vercel.app/login) — invite-only (no public sign-up) |
 
-> **Demo staff credentials** (admin / employee email + password) are in the submission document [`SUBMISSION.md`](SUBMISSION.md) — fill them in before handing in to Classroom.
->
-> **Local demo database (fast path):** run [`supabase/install_all.sql`](supabase/install_all.sql) in the Supabase SQL editor, invite staff, then run [`supabase/seed.sql`](supabase/seed.sql) for services, ~90 days of availability, demo customers, and sample appointments (dashboard / assign / open shifts).
+### Demo staff accounts
+
+| Role | Email | Password |
+| --- | --- | --- |
+| **Admin** | `admindemo@demo.internal` | `adminadminadmin` |
+| **Employee** | `userdemo@demo.internal` | `useruseruser` |
+
+Login: [https://fp-shifter.vercel.app/login](https://fp-shifter.vercel.app/login)
+
+> **Local demo database (fast path):** run [`supabase/install_all.sql`](supabase/install_all.sql) in the Supabase SQL editor, create/link staff (see [`supabase/link_auth_users.sql`](supabase/link_auth_users.sql)), then run [`supabase/seed.sql`](supabase/seed.sql) for services, ~90 days of availability, demo customers, and sample appointments (dashboard / assign / open shifts).
 
 ---
 
