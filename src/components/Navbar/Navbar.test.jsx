@@ -37,6 +37,15 @@ describe('Navbar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     signOut.mockResolvedValue();
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
   });
 
   it('shows only the public booking link and staff login when logged out', () => {
@@ -79,6 +88,22 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: /המשמרות שלי/ })).toBeInTheDocument();
   });
 
+  it('uses the drawer for Admin so the crowded link list does not overflow', () => {
+    authAs('Admin');
+    const { container } = renderNavbar();
+
+    expect(container.querySelector('.navbar')).toHaveClass('navbar--drawer');
+    expect(screen.getByRole('button', { name: /פתח תפריט/ })).toBeInTheDocument();
+  });
+
+  it('keeps a horizontal nav for Employee on a wide viewport', () => {
+    authAs('Employee');
+    const { container } = renderNavbar();
+
+    expect(container.querySelector('.navbar')).not.toHaveClass('navbar--drawer');
+    expect(screen.queryByRole('button', { name: /פתח תפריט/ })).not.toBeInTheDocument();
+  });
+
   it('signs out via AuthContext and navigates to /login', async () => {
     authAs('Employee');
     renderNavbar();
@@ -92,6 +117,15 @@ describe('Navbar', () => {
   });
 
   it('toggles the mobile menu open and closed', () => {
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
     authAs(null);
     renderNavbar();
 
@@ -113,6 +147,15 @@ describe('Navbar', () => {
   });
 
   it('closes the mobile menu when a navigation link is clicked', () => {
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
     authAs(null);
     renderNavbar();
 
@@ -125,6 +168,15 @@ describe('Navbar', () => {
   });
 
   it('closes the mobile menu when the backdrop is clicked', () => {
+    window.matchMedia = vi.fn().mockImplementation((query) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
     authAs(null);
     renderNavbar();
 

@@ -4,8 +4,13 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import './Navbar.css';
 
+const DRAWER_MQ = '(max-width: 1100px)';
+
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isNarrow, setIsNarrow] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(DRAWER_MQ).matches : false
+  );
   const { session, role, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -20,11 +25,25 @@ const Navbar = () => {
   const closeMenu = () => setIsOpen(false);
 
   const isStaff = role === 'Employee' || role === 'Admin';
+  // Admin has too many links for one row; also collapse on mid-size viewports.
+  const useDrawer = role === 'Admin' || isNarrow;
+
+  useEffect(() => {
+    const mq = window.matchMedia(DRAWER_MQ);
+    const onChange = () => setIsNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // Close the drawer on route change and unlock body scroll
   useEffect(() => {
     setIsOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    if (!useDrawer) setIsOpen(false);
+  }, [useDrawer]);
 
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : '';
@@ -34,25 +53,27 @@ const Navbar = () => {
   }, [isOpen]);
 
   return (
-    <nav className="navbar">
+    <nav className={`navbar${useDrawer ? ' navbar--drawer' : ''}`}>
       <div className="navbar-container">
         <Link to="/" className="navbar-logo" onClick={closeMenu}>
           <Scissors className="logo-icon" />
           <span>ShiftSync</span>
         </Link>
 
-        <button
-          type="button"
-          className="menu-icon"
-          onClick={() => setIsOpen((open) => !open)}
-          aria-label={isOpen ? 'סגור תפריט' : 'פתח תפריט'}
-          aria-expanded={isOpen}
-          aria-controls="primary-nav"
-        >
-          {isOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        {useDrawer && (
+          <button
+            type="button"
+            className="menu-icon"
+            onClick={() => setIsOpen((open) => !open)}
+            aria-label={isOpen ? 'סגור תפריט' : 'פתח תפריט'}
+            aria-expanded={isOpen}
+            aria-controls="primary-nav"
+          >
+            {isOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        )}
 
-        {isOpen && (
+        {useDrawer && isOpen && (
           <button
             type="button"
             className="nav-backdrop"

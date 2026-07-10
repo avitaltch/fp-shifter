@@ -98,83 +98,74 @@
   display: none;
 }
 
-@media screen and (max-width: 900px) {
-  .nav-menu {
-    gap: 0.35rem;
-  }
-
-  .nav-links {
-    padding: 0.45rem 0.55rem;
-    font-size: 0.95rem;
-  }
+/*
+ * Drawer mode: toggled via .navbar--drawer (Admin always, or viewport ≤1100px).
+ * Admin has ~10 Hebrew links that overflow a single row on typical laptops.
+ */
+.navbar--drawer .navbar-container {
+  padding: 0 1rem;
 }
 
-@media screen and (max-width: 768px) {
-  .navbar-container {
-    padding: 0 1rem;
-  }
+.navbar--drawer .menu-icon {
+  display: inline-flex;
+}
 
-  .nav-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    top: 0;
-    background: rgba(15, 23, 42, 0.35);
-    border: none;
-    padding: 0;
-    z-index: 998;
-    cursor: pointer;
-  }
+.navbar--drawer .nav-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  top: 0;
+  background: rgba(15, 23, 42, 0.35);
+  border: none;
+  padding: 0;
+  z-index: 998;
+  cursor: pointer;
+}
 
-  .nav-menu {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    width: min(100%, 320px);
-    max-height: calc(100dvh - 64px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    position: fixed;
-    top: calc(64px + env(safe-area-inset-top, 0px));
-    right: 0;
-    transform: translateX(105%);
-    opacity: 0;
-    pointer-events: none;
-    transition: transform 0.25s ease, opacity 0.2s ease;
-    background-color: var(--bg-surface);
-    box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
-    padding: 0.5rem 0 max(1rem, env(safe-area-inset-bottom));
-    z-index: 1000;
-  }
+.navbar--drawer .nav-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  width: min(100%, 320px);
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  right: 0;
+  transform: translateX(105%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.25s ease, opacity 0.2s ease;
+  background-color: var(--bg-surface);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12);
+  padding: 0.5rem 0 max(1rem, env(safe-area-inset-bottom));
+  z-index: 1000;
+}
 
-  .nav-menu.active {
-    transform: translateX(0);
-    opacity: 1;
-    pointer-events: auto;
-  }
+.navbar--drawer .nav-menu.active {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
 
-  .nav-item {
-    width: 100%;
-  }
+.navbar--drawer .nav-item {
+  width: 100%;
+}
 
-  .nav-item.auth-item {
-    margin-top: 0.5rem;
-    padding-top: 0.5rem;
-    border-top: 1px solid var(--border-light);
-  }
+.navbar--drawer .nav-item.auth-item {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-light);
+}
 
-  .nav-links {
-    padding: 0.95rem 1.25rem;
-    width: 100%;
-    min-height: 48px;
-    display: flex;
-    justify-content: flex-start;
-    border-radius: 0;
-    white-space: normal;
-  }
-
-  .menu-icon {
-    display: inline-flex;
-  }
+.navbar--drawer .nav-links {
+  padding: 0.95rem 1.25rem;
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  justify-content: flex-start;
+  border-radius: 0;
+  white-space: normal;
 }
