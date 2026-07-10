@@ -244,6 +244,15 @@ button {
   margin: 0.5rem 0;
 }
 
+.info-text {
+  color: var(--primary);
+  background: var(--secondary);
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-md, 8px);
+  padding: 0.6rem 1rem;
+  margin: 0.5rem 0;
+}
+
 .no-slots,
 .no-eligible {
   color: #6b7280;

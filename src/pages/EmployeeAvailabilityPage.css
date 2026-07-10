@@ -25,7 +25,7 @@
 .input-group select {
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid var(--border-color, #E5E7EB);
+  border: 1px solid var(--border-light);
   border-radius: 6px;
   font-family: inherit;
   font-size: 1rem;
@@ -53,7 +53,7 @@
 .bulk-hint {
   margin: 0;
   font-size: 0.95rem;
-  color: var(--text-secondary, #6B7280);
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
@@ -68,8 +68,8 @@
   min-height: 44px;
   padding: 0.5rem 0.75rem;
   border: 1.5px solid var(--border-light);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--bg-surface, #fff);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 1rem;
@@ -78,7 +78,7 @@
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
 }
 
-.workday-chip:hover {
+.workday-chip:hover:not(:disabled) {
   border-color: var(--primary);
   color: var(--primary);
 }
@@ -89,9 +89,14 @@
   color: #fff;
 }
 
-.workday-chip--on:hover {
+.workday-chip--on:hover:not(:disabled) {
   color: #fff;
   filter: brightness(1.05);
+}
+
+.workday-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .bulk-actions {
@@ -107,8 +112,8 @@
   min-height: 48px;
   padding: 0.75rem 1rem;
   border: 1.5px solid var(--primary);
-  border-radius: var(--radius-md, 8px);
-  background: var(--bg-surface, #fff);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
   color: var(--primary);
   font-family: inherit;
   font-size: 0.95rem;

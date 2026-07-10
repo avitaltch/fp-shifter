@@ -22,6 +22,13 @@ describe('Alert', () => {
     expect(el).toHaveClass('success-text');
   });
 
+  it('renders an info message with role=status and info-text class', () => {
+    render(<Alert type="info">לידיעתך</Alert>);
+    const el = screen.getByRole('status');
+    expect(el).toHaveTextContent('לידיעתך');
+    expect(el).toHaveClass('info-text');
+  });
+
   it('defaults to error styling', () => {
     render(<Alert>ברירת מחדל</Alert>);
     expect(screen.getByRole('alert')).toHaveClass('error-text');

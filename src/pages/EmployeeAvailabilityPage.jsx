@@ -172,21 +172,21 @@ const EmployeeAvailabilityPage = () => {
       if (!confirmed) return;
     }
 
-    const successText =
-      skipped > 0
-        ? `נפתחו ${rows.length} ימים (${skipped} דולגו — קיימת זמינות חופפת)`
-        : `נפתחו ${rows.length} ימים`;
-
     const { ok, result: created } = await run(
       'bulk',
       () => addAvailabilityBulk(rows),
-      {
-        success: successText,
-        errorFallback: 'שגיאה בפתיחה מרוכזת. יש לנסות שוב.',
-      }
+      { errorFallback: 'שגיאה בפתיחה מרוכזת. יש לנסות שוב.' }
     );
     if (ok) {
-      setData((prev) => sortEntries([...prev, ...(created ?? [])]));
+      const createdRows = created ?? [];
+      setData((prev) => sortEntries([...prev, ...createdRows]));
+      const openedText =
+        createdRows.length === 1 ? 'נפתח יום אחד' : `נפתחו ${createdRows.length} ימים`;
+      const skippedText = skipped === 1 ? 'דולג יום אחד' : `דולגו ${skipped} ימים`;
+      setMessage({
+        type: 'success',
+        text: skipped > 0 ? `${openedText} (${skippedText} — קיימת זמינות חופפת)` : openedText,
+      });
     }
   };
 
@@ -273,6 +273,7 @@ const EmployeeAvailabilityPage = () => {
               type="button"
               className={`workday-chip${workdays[index] ? ' workday-chip--on' : ''}`}
               aria-pressed={workdays[index]}
+              disabled={isBulkBusy}
               onClick={() => toggleWorkday(index)}
             >
               {label}

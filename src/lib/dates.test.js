@@ -185,8 +185,14 @@ describe('month boundary helpers', () => {
   it('returns the first and last day of the next month', () => {
     expect(startOfNextMonthString('2026-07-10')).toBe('2026-08-01');
     expect(endOfNextMonthString('2026-07-10')).toBe('2026-08-31');
+  });
+
+  it('rolls the next-month range over December into January of the next year', () => {
     expect(startOfNextMonthString('2026-12-15')).toBe('2027-01-01');
     expect(endOfNextMonthString('2026-12-15')).toBe('2027-01-31');
+    expect(
+      datesInRange(startOfNextMonthString('2026-12-15'), endOfNextMonthString('2026-12-15'))
+    ).toHaveLength(31);
   });
 });
 

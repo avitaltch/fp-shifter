@@ -325,8 +325,116 @@ describe('EmployeeAvailabilityPage', () => {
         ]);
       });
       expect(
-        await screen.findByText('נפתחו 1 ימים (1 דולגו — קיימת זמינות חופפת)')
+        await screen.findByText('נפתח יום אחד (דולג יום אחד — קיימת זמינות חופפת)')
       ).toBeInTheDocument();
+    });
+
+    it('does not skip a same-date entry whose times do not overlap', async () => {
+      // Existing entry on Wed 2026-07-08 in the evening; bulk opens 08:00-16:00
+      listMyAvailability.mockResolvedValue([
+        {
+          id: 'evening',
+          user_id: 'user-1',
+          available_date: '2026-07-08',
+          start_time: '17:00:00',
+          end_time: '19:00:00',
+        },
+      ]);
+      addAvailabilityBulk.mockImplementation(async (rows) =>
+        rows.map((r, i) => ({ id: `w${i}`, ...r }))
+      );
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalledTimes(1);
+      });
+      const rows = addAvailabilityBulk.mock.calls[0][0];
+      expect(rows.map((r) => r.available_date)).toEqual(['2026-07-08', '2026-07-09']);
+      // Nothing skipped, so no skipped clause in the message
+      expect(await screen.findByText('נפתחו 2 ימים')).toBeInTheDocument();
+    });
+
+    it('reports the created-row count when the API returns fewer rows than requested', async () => {
+      // 2 rows requested (Wed+Thu), but the server only created 1
+      addAvailabilityBulk.mockResolvedValue([
+        {
+          id: 'only-one',
+          user_id: 'user-1',
+          available_date: '2026-07-08',
+          start_time: '08:00',
+          end_time: '16:00',
+        },
+      ]);
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalledTimes(1);
+      });
+      expect(addAvailabilityBulk.mock.calls[0][0]).toHaveLength(2);
+      expect(await screen.findByText('נפתח יום אחד')).toBeInTheDocument();
+    });
+
+    it('shows the info message when "this week" is clicked on a Friday with default toggles', async () => {
+      // Friday 2026-07-10: only Fri+Sat remain in the week, both off by default
+      vi.setSystemTime(new Date(2026, 6, 10, 12, 0, 0));
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את השבוע' }));
+
+      const info = await screen.findByText(
+        'כל הימים בטווח כבר פתוחים או שאינם בימי העבודה שנבחרו.'
+      );
+      expect(info).toBeInTheDocument();
+      expect(info).toHaveClass('info-text');
+      expect(addAvailabilityBulk).not.toHaveBeenCalled();
+    });
+
+    it('does not ask for confirmation at exactly 20 rows', async () => {
+      // Friday 2026-07-03: remaining Sun–Thu days in July = exactly 20
+      vi.setSystemTime(new Date(2026, 6, 3, 12, 0, 0));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      addAvailabilityBulk.mockImplementation(async (rows) =>
+        rows.map((r, i) => ({ id: `t${i}`, ...r }))
+      );
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את החודש' }));
+
+      await waitFor(() => {
+        expect(addAvailabilityBulk).toHaveBeenCalledTimes(1);
+      });
+      expect(addAvailabilityBulk.mock.calls[0][0]).toHaveLength(20);
+      expect(confirmSpy).not.toHaveBeenCalled();
+      confirmSpy.mockRestore();
+    });
+
+    it('asks for confirmation at 21 rows', async () => {
+      // Thursday 2026-07-02: remaining Sun–Thu days in July = 21
+      vi.setSystemTime(new Date(2026, 6, 2, 12, 0, 0));
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+      render(<EmployeeAvailabilityPage />);
+      await screen.findByText('פתיחה מרוכזת');
+
+      fireEvent.click(screen.getByRole('button', { name: 'פתח את החודש' }));
+
+      await waitFor(() => {
+        expect(confirmSpy).toHaveBeenCalledWith('לפתוח זמינות ב-21 ימים?');
+      });
+      expect(addAvailabilityBulk).not.toHaveBeenCalled();
+      confirmSpy.mockRestore();
     });
 
     it('shows an informative message when nothing qualifies', async () => {
