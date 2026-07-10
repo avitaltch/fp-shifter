@@ -58,16 +58,7 @@ test.describe('Admin Flow E2E', () => {
   test('Admin can assign an unassigned shift to an eligible employee', async ({ page }) => {
     // getAssignmentData parallel fetches
     await page.route('**/rest/v1/appointment_items*', async (route) => {
-      const method = route.request().method();
       const url = route.request().url();
-      if (method === 'PATCH') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify([{ ...openItem, user_id: EMP_ID }]),
-        });
-        return;
-      }
       // Open shifts: user_id=is.null ; assignments: user_id=not.is.null
       if (url.includes('user_id=is.null')) {
         await route.fulfill({
@@ -112,6 +103,15 @@ test.describe('Admin Flow E2E', () => {
         end_time: '16:00:00',
       },
     ]);
+
+    // Assignment goes through assign_shift RPC (not a direct PATCH).
+    await page.route('**/rest/v1/rpc/assign_shift*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ item_id: openItem.id, user_id: EMP_ID }),
+      });
+    });
 
     page.on('dialog', (dialog) => dialog.accept());
 

@@ -1,7 +1,7 @@
 -- ============================================================
 -- Demo seed data (optional). Run AFTER schema.sql + rls.sql +
 -- functions.sql, and after inviting at least one user.
--- Adjust the emails to users that exist in auth.users.
+-- Safe to re-run: skips overlapping availability rows.
 -- ============================================================
 
 -- Services
@@ -20,9 +20,22 @@ from users u cross join service_types st
 where u.deleted_at is null and st.deleted_at is null
 on conflict do nothing;
 
--- Availability for the next 7 days, 09:00-17:00, for all staff
+-- Availability for the next ~3 months (90 days), 09:00-17:00, for all staff.
+-- Skips days that already have an overlapping window so re-runs are safe.
 insert into availabilities (user_id, available_date, start_time, end_time)
-select u.id, (current_date + i), '09:00'::time, '17:00'::time
-from users u cross join generate_series(1, 7) as i
+select u.id, d::date, '09:00'::time, '17:00'::time
+from users u
+cross join generate_series(
+  (current_date + 1)::timestamp,
+  (current_date + 90)::timestamp,
+  interval '1 day'
+) as d
 where u.deleted_at is null
-on conflict do nothing;
+  and not exists (
+    select 1
+    from availabilities a
+    where a.user_id = u.id
+      and a.available_date = d::date
+      and a.start_time < '17:00'::time
+      and a.end_time > '09:00'::time
+  );
