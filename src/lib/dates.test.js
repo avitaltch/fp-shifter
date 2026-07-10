@@ -3,6 +3,8 @@ import {
   toDateString,
   todayString,
   addDaysString,
+  jerusalemTodayString,
+  jerusalemAddDaysString,
   toTimeDisplay,
   formatHebrewDate,
   formatDuration,
@@ -52,6 +54,44 @@ describe('addDaysString', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 11, 30, 12, 0, 0)); // 2026-12-30
     expect(addDaysString(3)).toBe('2027-01-02');
+  });
+});
+
+describe('jerusalemTodayString', () => {
+  it('returns YYYY-MM-DD format', () => {
+    expect(jerusalemTodayString()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("reports the salon's calendar day, not UTC", () => {
+    // 22:30 UTC on Jul 9 is already 01:30 on Jul 10 in Asia/Jerusalem (UTC+3)
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-09T22:30:00Z'));
+    expect(jerusalemTodayString()).toBe('2026-07-10');
+  });
+
+  it('matches the Jerusalem day during Israeli winter (UTC+2)', () => {
+    // 23:00 UTC on Jan 5 is 01:00 on Jan 6 in Jerusalem
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-05T23:00:00Z'));
+    expect(jerusalemTodayString()).toBe('2026-01-06');
+  });
+});
+
+describe('jerusalemAddDaysString', () => {
+  it('adds days to the Jerusalem calendar day and rolls over month boundaries', () => {
+    // Noon UTC on Jun 30 is Jun 30 in Jerusalem too
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-30T12:00:00Z'));
+    expect(jerusalemAddDaysString(0)).toBe('2026-06-30');
+    expect(jerusalemAddDaysString(1)).toBe('2026-07-01');
+    expect(jerusalemAddDaysString(60)).toBe('2026-08-29');
+  });
+
+  it('starts counting from the Jerusalem day even when UTC lags behind', () => {
+    // 22:30 UTC Jul 9 = Jul 10 in Jerusalem, so +1 day is Jul 11
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-09T22:30:00Z'));
+    expect(jerusalemAddDaysString(1)).toBe('2026-07-11');
   });
 });
 

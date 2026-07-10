@@ -21,6 +21,27 @@ export function addDaysString(n) {
   return toDateString(d);
 }
 
+// The booking server (business_now() in supabase/functions.sql) works in
+// Asia/Jerusalem. Customers may book from other timezones, so the date
+// picker bounds must follow the salon's calendar day, not the browser's.
+const JERUSALEM_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jerusalem',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Today's date as YYYY-MM-DD in the salon's timezone (Asia/Jerusalem). */
+export function jerusalemTodayString() {
+  return JERUSALEM_DATE_FORMAT.format(new Date());
+}
+
+/** YYYY-MM-DD of Jerusalem-today + n days. */
+export function jerusalemAddDaysString(n) {
+  const [y, m, d] = jerusalemTodayString().split('-').map(Number);
+  return toDateString(new Date(y, m - 1, d + n));
+}
+
 /** "HH:MM" from a Postgres time value ("HH:MM:SS"). */
 export function toTimeDisplay(time) {
   return time ? time.slice(0, 5) : '';
