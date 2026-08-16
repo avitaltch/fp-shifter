@@ -5,7 +5,7 @@
 
 ShiftSync is an online booking and shift-management system for service businesses (demo: a beauty salon). Customers book only when a qualified employee is free; managers run the day; employees publish availability and claim open work.
 
-Built with **React 19 + Vite** (Hebrew, RTL) and **Supabase** (Postgres, Auth, RLS, Edge Functions).
+Built with **React 19 + Vite** (Hebrew, RTL) and the open-source **Supabase** stack (Postgres, Auth, RLS, Edge Functions). The web app can run as a portable Docker container or on Vercel.
 
 ---
 
@@ -68,7 +68,8 @@ Login: [https://fp-shifter.vercel.app/login](https://fp-shifter.vercel.app/login
 | **Supabase RPC (security definer)** | Server logic | `get_available_slots`, `book_appointment`, `claim_shift`, `cancel_appointment`, customer manage RPCs, admin assign/unassign/deactivate |
 | **Supabase Edge Function (`invite-user`)** | Server logic | Admin invites staff with the **service-role** key (never shipped to the browser) |
 | **Supabase Auth email** | Email | Invite and password-reset links back to `/login` |
-| **Vercel** | Hosting | Production SPA deploy + SPA rewrites for React Router |
+| **Docker + Nginx** | Hosting | Self-hosted production SPA with runtime configuration and health checks |
+| **Vercel** | Optional hosting | Current hosted demo; not required for production |
 
 No Google OAuth and no third-party AI API in the product runtime — AI was used in the *build process* (Cursor agents), not as a live product dependency.
 
@@ -207,6 +208,7 @@ This project was built in **Cursor** with AI agents as the primary coding workfl
 ```
 src/
   lib/api/          Domain API (booking, availability, shifts, team, …)
+  lib/runtimeConfig Runtime-first environment configuration
   hooks/            useAsyncData, useAction
   context/          AuthContext (role from public.users)
   pages/            One page per route
@@ -238,6 +240,19 @@ supabase/
 6. `cp .env.example .env` → set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 7. `npm install && npm run dev`
 
+## Self-host
+
+The frontend is an immutable container: Supabase connection values are injected when the container starts, so the same image can move from managed Supabase to your own instance without rebuilding.
+
+```bash
+cp .env.selfhost.example .env.selfhost
+# Edit APP_SUPABASE_URL and APP_SUPABASE_ANON_KEY
+docker compose --env-file .env.selfhost up -d --build
+curl --fail http://localhost:8080/healthz
+```
+
+For the phased frontend, database, Auth, and Edge Function migration—including rollback and backup requirements—see [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md). The architecture decision is recorded in [`docs/adr/0001-portable-self-hosting.md`](docs/adr/0001-portable-self-hosting.md).
+
 ## Deploy (Vercel)
 
 1. Import the repo; Vite preset (`npm run build` → `dist/`).
@@ -247,6 +262,7 @@ supabase/
    ```bash
    supabase functions deploy invite-user --project-ref <ref>
    supabase secrets set SITE_URL=https://fp-shifter.vercel.app
+   supabase secrets set ALLOWED_ORIGINS=https://fp-shifter.vercel.app
    ```
    (If the CLI expects `supabase/functions/`, symlink from `supabase/edge-functions/invite-user`.)
 
@@ -257,6 +273,8 @@ supabase/
 | `npm run dev` | Vite dev server |
 | `npm test` | Vitest unit tests |
 | `npm run e2e` | Playwright E2E (stubbed) |
+| `npm run sql:generate` | Regenerate `supabase/install_all.sql` from its source SQL files |
+| `npm run sql:check` | Fail if the generated installer is stale (also runs in CI) |
 | `npm run screenshots` | Capture README PNGs into `docs/screenshots/` (stubbed) |
 | `npm run build` | Production build |
 

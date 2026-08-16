@@ -1,10 +1,9 @@
 -- ============================================================
 -- ONE-SHOT INSTALLER for an empty/expendable database.
--- Paste this whole file into Supabase Dashboard -> SQL Editor -> Run.
+-- Paste the generated install_all.sql into Supabase SQL Editor -> Run.
 -- It DROPS all fp-shifter tables and recreates everything (v2):
 -- schema + RLS + business functions + demo services.
--- (Generated from schema.sql + rls.sql + functions.sql + seed.sql —
---  edit those files, not this one.)
+-- Run `npm run sql:generate` after editing any installer source.
 -- ============================================================
 
 -- ---- reset ----

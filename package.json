@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "e2e": "playwright test",
+    "sql:generate": "node scripts/generate-install-sql.mjs",
+    "sql:check": "node scripts/generate-install-sql.mjs --check",
     "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
