@@ -536,16 +536,15 @@ describe('getDashboardData', () => {
     vi.clearAllMocks();
   });
 
-  it('returns appointments and the staff count', async () => {
+  it('returns appointments without making an unused staff-count request', async () => {
     const appointments = [{ id: 'apt-1' }];
     const aptQuery = createQuery({ data: appointments, error: null });
-    const countQuery = createQuery({ count: 4, error: null });
-    fromByTable({ appointments: aptQuery, users: countQuery });
+    fromByTable({ appointments: aptQuery });
 
     await expect(getDashboardData('2026-07-20', '2026-07-26')).resolves.toEqual({
       appointments,
-      staffCount: 4,
     });
+    expect(supabase.from).toHaveBeenCalledTimes(1);
     expect(aptQuery.neq).toHaveBeenCalledWith('status', 'Cancelled');
     // The dashboard needs the customer's phone for the tel: contact link
     expect(aptQuery.select).toHaveBeenCalledWith(
@@ -553,25 +552,10 @@ describe('getDashboardData', () => {
     );
   });
 
-  it('throws when the count query fails', async () => {
-    fromByTable({
-      appointments: createQuery({ data: [], error: null }),
-      users: createQuery({ count: null, error: new Error('boom') }),
-    });
+  it('throws when the appointments query fails', async () => {
+    fromByTable({ appointments: createQuery({ data: null, error: new Error('boom') }) });
 
     await expect(getDashboardData('2026-07-20', '2026-07-26')).rejects.toThrow('boom');
-  });
-
-  it('coalesces a null staff count to 0', async () => {
-    fromByTable({
-      appointments: createQuery({ data: [], error: null }),
-      users: createQuery({ count: null, error: null }),
-    });
-
-    await expect(getDashboardData('2026-07-20', '2026-07-26')).resolves.toEqual({
-      appointments: [],
-      staffCount: 0,
-    });
   });
 });
 

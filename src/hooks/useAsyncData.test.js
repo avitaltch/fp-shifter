@@ -74,4 +74,24 @@ describe('useAsyncData', () => {
     act(() => result.current.setData((prev) => prev.filter((x) => x.id !== 1)));
     expect(result.current.data).toEqual([{ id: 2 }]);
   });
+
+  it('keeps the newest result when overlapping requests finish out of order', async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const first = new Promise((resolve) => { resolveFirst = resolve; });
+    const second = new Promise((resolve) => { resolveSecond = resolve; });
+    const fetchFn = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const { result } = renderHook(() => useAsyncData(fetchFn));
+
+    await waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+    act(() => { result.current.refetch(); });
+    await waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(2));
+
+    await act(async () => { resolveSecond('new'); await second; });
+    expect(result.current.data).toBe('new');
+
+    await act(async () => { resolveFirst('old'); await first; });
+    expect(result.current.data).toBe('new');
+    expect(result.current.loading).toBe(false);
+  });
 });

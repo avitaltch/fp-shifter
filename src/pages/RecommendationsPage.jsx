@@ -30,7 +30,7 @@ const RecommendationsPage = () => {
     errorMessage: 'שגיאה בטעינת המשמרות הפתוחות.',
   });
   // A failed claim usually means the list is stale — refetch on error.
-  const { busyKey: claimingId, message, run } = useAction({ onError: refetch });
+  const { busyKeys, isBusy, message, run } = useAction({ onError: refetch });
 
   const openShifts = data ?? [];
 
@@ -73,10 +73,10 @@ const RecommendationsPage = () => {
           <button
             className="btn-primary"
             onClick={() => handleVolunteer(rec.id)}
-            disabled={claimingId !== null}
+            disabled={busyKeys.size > 0}
           >
             <UserPlus size={18} />
-            {claimingId === rec.id ? 'משבץ...' : 'אני פנוי/ה'}
+            {isBusy(rec.id) ? 'משבץ...' : 'אני פנוי/ה'}
           </button>
         ) : (
           <span className="ineligible-hint">

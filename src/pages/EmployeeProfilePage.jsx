@@ -19,14 +19,18 @@ const EmployeeProfilePage = () => {
   const [phone, setPhone] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const { busyKey, message, setMessage, run } = useAction();
+  const { isBusy, message, setMessage, run } = useAction();
+  const profileId = profile?.id;
+  const profileFirstName = profile?.first_name;
+  const profileLastName = profile?.last_name;
+  const profilePhone = profile?.phone;
 
   useEffect(() => {
-    if (!profile) return;
-    setFirstName(profile.first_name === 'New' ? '' : profile.first_name || '');
-    setLastName(profile.last_name === 'User' ? '' : profile.last_name || '');
-    setPhone(profile.phone || '');
-  }, [profile?.id, profile?.first_name, profile?.last_name, profile?.phone]);
+    if (!profileId) return;
+    setFirstName(profileFirstName === 'New' ? '' : profileFirstName || '');
+    setLastName(profileLastName === 'User' ? '' : profileLastName || '');
+    setPhone(profilePhone || '');
+  }, [profileId, profileFirstName, profileLastName, profilePhone]);
 
   const saveProfile = async (e) => {
     e.preventDefault();
@@ -159,8 +163,8 @@ const EmployeeProfilePage = () => {
           />
         </div>
 
-        <button type="submit" className="submit-btn" disabled={busyKey === 'profile'}>
-          {busyKey === 'profile' ? (
+        <button type="submit" className="submit-btn" disabled={isBusy('profile')}>
+          {isBusy('profile') ? (
             <LoadingSpinner text="שומר..." inline={true} />
           ) : (
             'שמור פרטים'
@@ -197,8 +201,8 @@ const EmployeeProfilePage = () => {
           />
         </div>
 
-        <button type="submit" className="submit-btn" disabled={busyKey === 'password'}>
-          {busyKey === 'password' ? (
+        <button type="submit" className="submit-btn" disabled={isBusy('password')}>
+          {isBusy('password') ? (
             <LoadingSpinner text="שומר..." inline={true} />
           ) : (
             'עדכן סיסמה'

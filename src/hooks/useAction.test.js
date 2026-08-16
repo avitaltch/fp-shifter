@@ -85,4 +85,44 @@ describe('useAction', () => {
     act(() => result.current.setMessage({ type: 'error', text: 'ולידציה' }));
     expect(result.current.message).toEqual({ type: 'error', text: 'ולידציה' });
   });
+
+  it('tracks overlapping keys until each action finishes', async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const first = new Promise((resolve) => { resolveFirst = resolve; });
+    const second = new Promise((resolve) => { resolveSecond = resolve; });
+    const { result } = renderHook(() => useAction());
+
+    act(() => {
+      result.current.run('first', () => first);
+      result.current.run('second', () => second);
+    });
+    expect(result.current.isBusy('first')).toBe(true);
+    expect(result.current.isBusy('second')).toBe(true);
+
+    await act(async () => { resolveFirst(); await first; });
+    expect(result.current.isBusy('first')).toBe(false);
+    expect(result.current.isBusy('second')).toBe(true);
+
+    await act(async () => { resolveSecond(); await second; });
+    expect(result.current.isBusy('second')).toBe(false);
+  });
+
+  it('keeps a key busy until duplicate actions using that key both finish', async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const first = new Promise((resolve) => { resolveFirst = resolve; });
+    const second = new Promise((resolve) => { resolveSecond = resolve; });
+    const { result } = renderHook(() => useAction());
+
+    act(() => {
+      result.current.run('same', () => first);
+      result.current.run('same', () => second);
+    });
+    await act(async () => { resolveFirst(); await first; });
+    expect(result.current.isBusy('same')).toBe(true);
+
+    await act(async () => { resolveSecond(); await second; });
+    expect(result.current.isBusy('same')).toBe(false);
+  });
 });

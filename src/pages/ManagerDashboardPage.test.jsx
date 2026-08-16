@@ -57,7 +57,6 @@ describe('ManagerDashboardPage', () => {
     vi.clearAllMocks();
     getDashboardData.mockResolvedValue({
       appointments: buildAppointments(),
-      staffCount: 4,
     });
   });
 
@@ -112,7 +111,7 @@ describe('ManagerDashboardPage', () => {
   });
 
   it('shows an empty state when nothing is booked for today', async () => {
-    getDashboardData.mockResolvedValue({ appointments: [], staffCount: 0 });
+    getDashboardData.mockResolvedValue({ appointments: [] });
     render(<ManagerDashboardPage />);
 
     expect(await screen.findByText('אין תורים שנקבעו להיום.')).toBeInTheDocument();

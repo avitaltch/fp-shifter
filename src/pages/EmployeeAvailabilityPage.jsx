@@ -80,11 +80,11 @@ const EmployeeAvailabilityPage = () => {
     enabled: Boolean(userId),
     errorMessage: 'שגיאה בטעינת הזמינות הקיימת.',
   });
-  const { busyKey, message, setMessage, run } = useAction();
+  const { isBusy, message, setMessage, run } = useAction();
 
   const entries = data ?? [];
-  const isSubmitting = busyKey === 'add';
-  const isBulkBusy = busyKey === 'bulk';
+  const isSubmitting = isBusy('add');
+  const isBulkBusy = isBusy('bulk');
 
   const overlapsExisting = (date, start, end) =>
     entries.some(

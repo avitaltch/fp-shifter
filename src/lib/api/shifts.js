@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import { unwrap } from './unwrap';
+import { claimEligibility, createEligibilityIndex } from './eligibility';
 
 // ---------- my shifts ----------
 
@@ -7,7 +8,9 @@ export async function listMyShifts(userId, fromDate) {
   return unwrap(
     await supabase
       .from('appointment_items')
-      .select('*, service_types(name), appointments(visit_date, customers(first_name, last_name))')
+      .select(
+        'id, service_type_id, user_id, work_date, start_time, end_time, status, service_types(name), appointments(visit_date, customers(first_name, last_name))'
+      )
       .eq('user_id', userId)
       .is('deleted_at', null)
       .gte('work_date', fromDate)
@@ -35,7 +38,9 @@ export async function listOpenShifts(fromDate) {
   return unwrap(
     await supabase
       .from('appointment_items')
-      .select('*, service_types(name), appointments(visit_date, customers(first_name, last_name))')
+      .select(
+        'id, service_type_id, user_id, work_date, start_time, end_time, status, service_types(name), appointments(visit_date, customers(first_name, last_name))'
+      )
       .is('user_id', null)
       .is('deleted_at', null)
       .gte('work_date', fromDate)
@@ -50,36 +55,6 @@ export async function listOpenShifts(fromDate) {
 // column-guard trigger for non-admins.)
 export async function claimShift(itemId) {
   return unwrap(await supabase.rpc('claim_shift', { p_item_id: itemId }));
-}
-
-// Pure helper: can THIS user claim this open item, and if not — why not.
-// Mirrors the server-side checks in claim_shift so the UI can explain
-// instead of failing on click.
-export function claimEligibility(item, userId, { skills, availabilities, assignments }) {
-  const qualified = skills.some(
-    (s) => s.user_id === userId && s.service_type_id === item.service_type_id
-  );
-  if (!qualified) return { eligible: false, reason: 'NOT_QUALIFIED' };
-
-  const available = availabilities.some(
-    (a) =>
-      a.user_id === userId &&
-      a.available_date === item.work_date &&
-      a.start_time <= item.start_time &&
-      a.end_time >= item.end_time
-  );
-  if (!available) return { eligible: false, reason: 'NOT_AVAILABLE' };
-
-  const conflict = assignments.some(
-    (x) =>
-      x.user_id === userId &&
-      x.work_date === item.work_date &&
-      x.start_time < item.end_time &&
-      x.end_time > item.start_time
-  );
-  if (conflict) return { eligible: false, reason: 'SHIFT_CONFLICT' };
-
-  return { eligible: true, reason: null };
 }
 
 // Open shifts annotated with the current user's claim eligibility.
@@ -106,8 +81,14 @@ export async function getClaimableShifts(userId, fromDate) {
       .gte('work_date', fromDate)
       .then(unwrap),
   ]);
+  const eligibilityIndex = createEligibilityIndex({ skills, availabilities, assignments });
   return open.map((item) => ({
     ...item,
-    ...claimEligibility(item, userId, { skills, availabilities, assignments }),
+    ...claimEligibility(item, userId, {
+      skills,
+      availabilities,
+      assignments,
+      eligibilityIndex,
+    }),
   }));
 }

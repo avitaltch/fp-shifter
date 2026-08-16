@@ -1,6 +1,11 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Users, CheckCircle, Clock } from 'lucide-react';
-import { getAssignmentData, eligibleEmployeesFor, assignShift } from '../lib/api';
+import {
+  getAssignmentData,
+  createEligibilityIndex,
+  eligibleEmployeesFor,
+  assignShift,
+} from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
 import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
@@ -17,7 +22,7 @@ const ShiftAssignmentPage = () => {
     errorMessage: 'שגיאה בטעינת הנתונים.',
   });
   // A failed assignment usually means the list is stale — refetch on error.
-  const { busyKey: assigningId, message, run } = useAction({ onError: refetch });
+  const { isBusy, message, run } = useAction({ onError: refetch });
 
   const handleAssign = async (item, userId) => {
     if (!userId) return;
@@ -43,6 +48,10 @@ const ShiftAssignmentPage = () => {
   };
 
   const unassigned = data?.unassigned || [];
+  const eligibilityIndex = useMemo(
+    () => (data ? createEligibilityIndex(data) : null),
+    [data]
+  );
 
   return (
     <PageContainer size="md" className="assignment-page">
@@ -66,7 +75,7 @@ const ShiftAssignmentPage = () => {
       {!loading && !error && unassigned.length > 0 && (
         <div className="unassigned-list">
           {unassigned.map((item) => {
-            const eligible = eligibleEmployeesFor(item, data);
+            const eligible = eligibleEmployeesFor(item, { ...data, eligibilityIndex });
             return (
               <div key={item.id} className="unassigned-card">
                 <div className="unassigned-info">
@@ -90,11 +99,11 @@ const ShiftAssignmentPage = () => {
                     <select
                       onChange={(e) => handleAssign(item, e.target.value)}
                       value=""
-                      disabled={assigningId === item.id}
+                      disabled={isBusy(item.id)}
                       className="employee-select"
                     >
                       <option value="" disabled>
-                        {assigningId === item.id ? 'משבץ...' : 'בחר/י עובד/ת לשיבוץ'}
+                        {isBusy(item.id) ? 'משבץ...' : 'בחר/י עובד/ת לשיבוץ'}
                       </option>
                       {eligible.map((emp) => (
                         <option key={emp.id} value={emp.id}>

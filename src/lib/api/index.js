@@ -2,6 +2,7 @@
 // implementation is split by domain so each module has one reason to change.
 export * from './services';
 export * from './booking';
+export * from './eligibility';
 export * from './availability';
 export * from './shifts';
 export * from './assignment';

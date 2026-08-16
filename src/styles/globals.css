@@ -35,7 +35,8 @@ html {
 }
 
 body {
-  font-family: 'Assistant', sans-serif;
+  /* Keep the UI independent of a third-party font CDN. */
+  font-family: Arial, "Noto Sans Hebrew", "Segoe UI", sans-serif;
   background-color: var(--bg-app);
   color: var(--text-primary);
   line-height: 1.5;

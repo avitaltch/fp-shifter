@@ -30,7 +30,7 @@ const BookingManagePage = () => {
   const [confirmationNumber, setConfirmationNumber] = useState('');
   const [appointment, setAppointment] = useState(null);
   const [cancelled, setCancelled] = useState(false);
-  const { busyKey, message, setMessage, run } = useAction();
+  const { isBusy, message, setMessage, run } = useAction();
 
   useEffect(() => {
     const stored = readStoredConfirmation();
@@ -123,9 +123,9 @@ const BookingManagePage = () => {
           <button
             type="submit"
             className="submit-btn"
-            disabled={busyKey === 'lookup'}
+            disabled={isBusy('lookup')}
           >
-            {busyKey === 'lookup' ? 'מחפש...' : 'איתור תור'}
+            {isBusy('lookup') ? 'מחפש...' : 'איתור תור'}
           </button>
         </form>
       )}
@@ -165,9 +165,9 @@ const BookingManagePage = () => {
               type="button"
               className="cancel-btn"
               onClick={handleCancel}
-              disabled={busyKey === 'cancel'}
+              disabled={isBusy('cancel')}
             >
-              {busyKey === 'cancel' ? 'מבטל...' : 'ביטול התור'}
+              {isBusy('cancel') ? 'מבטל...' : 'ביטול התור'}
             </button>
           )}
 

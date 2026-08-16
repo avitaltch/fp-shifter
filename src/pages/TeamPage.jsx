@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Briefcase, ShieldCheck, UserRound, Pencil, Check, X, UserX, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -21,6 +21,7 @@ import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './TeamPage.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMPTY_LIST = [];
 
 // Admin page: manage each staff member's name, role and skills.
 // New employees are invited in-app (Edge Function → auth.admin.inviteUserByEmail).
@@ -40,11 +41,15 @@ const TeamPage = () => {
   const { data, setData, loading, error } = useAsyncData(fetchTeam, {
     errorMessage: 'שגיאה בטעינת נתוני הצוות.',
   });
-  const { busyKey, message, setMessage, run } = useAction();
+  const { isBusy, message, setMessage, run } = useAction();
 
-  const staff = data?.staff ?? [];
-  const skills = data?.skills ?? [];
-  const services = data?.services ?? [];
+  const staff = data?.staff ?? EMPTY_LIST;
+  const skills = data?.skills ?? EMPTY_LIST;
+  const services = data?.services ?? EMPTY_LIST;
+  const skillsByPair = useMemo(
+    () => new Map(skills.map((skill) => [`${skill.user_id}:${skill.service_type_id}`, skill])),
+    [skills]
+  );
 
   const sendInvite = async (e) => {
     e.preventDefault();
@@ -144,10 +149,8 @@ const TeamPage = () => {
   };
 
   const toggleSkill = async (employee, service) => {
-    const existing = skills.find(
-      (s) => s.user_id === employee.id && s.service_type_id === service.id
-    );
     const key = `${employee.id}:${service.id}`;
+    const existing = skillsByPair.get(key);
     await run(
       key,
       async () => {
@@ -216,14 +219,14 @@ const TeamPage = () => {
               placeholder="email@example.com"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
-              disabled={busyKey === 'invite'}
+              disabled={isBusy('invite')}
             />
             <button
               type="submit"
               className="btn-primary"
-              disabled={busyKey === 'invite'}
+              disabled={isBusy('invite')}
             >
-              {busyKey === 'invite' ? 'שולח...' : 'שליחת הזמנה'}
+              {isBusy('invite') ? 'שולח...' : 'שליחת הזמנה'}
             </button>
           </form>
         </div>
@@ -265,7 +268,7 @@ const TeamPage = () => {
                       className="icon-btn save"
                       aria-label="שמור שם"
                       onClick={() => saveName(employee)}
-                      disabled={busyKey === `name:${employee.id}`}
+                      disabled={isBusy(`name:${employee.id}`)}
                     >
                       <Check size={18} />
                     </button>
@@ -274,7 +277,7 @@ const TeamPage = () => {
                       className="icon-btn cancel"
                       aria-label="בטל עריכת שם"
                       onClick={cancelEditName}
-                      disabled={busyKey === `name:${employee.id}`}
+                      disabled={isBusy(`name:${employee.id}`)}
                     >
                       <X size={18} />
                     </button>
@@ -311,7 +314,7 @@ const TeamPage = () => {
                       aria-label={`השבתת ${employee.first_name} ${employee.last_name}`}
                       title="השבתת עובד/ת"
                       onClick={() => deactivate(employee)}
-                      disabled={busyKey === `deactivate:${employee.id}`}
+                      disabled={isBusy(`deactivate:${employee.id}`)}
                     >
                       <UserX size={18} />
                     </button>
@@ -326,17 +329,15 @@ const TeamPage = () => {
                 ) : (
                   <div className="skills-grid">
                     {services.map((service) => {
-                      const active = skills.some(
-                        (s) => s.user_id === employee.id && s.service_type_id === service.id
-                      );
                       const key = `${employee.id}:${service.id}`;
+                      const active = skillsByPair.has(key);
                       return (
                         <button
                           key={service.id}
                           type="button"
                           className={`skill-chip ${active ? 'active' : ''}`}
                           onClick={() => toggleSkill(employee, service)}
-                          disabled={busyKey === key}
+                          disabled={isBusy(key)}
                         >
                           {service.name}
                         </button>

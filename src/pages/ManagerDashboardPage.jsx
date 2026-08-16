@@ -26,7 +26,7 @@ const ManagerDashboardPage = () => {
     errorMessage: 'שגיאה בטעינת נתוני הדאשבורד.',
   });
   // A failed cancel/unassign usually means the list is stale — refetch on error.
-  const { busyKey, message, run } = useAction({ onError: refetch });
+  const { busyKeys, isBusy, message, run } = useAction({ onError: refetch });
 
   const appointments = data ?? [];
 
@@ -169,11 +169,11 @@ const ManagerDashboardPage = () => {
                         type="button"
                         className="cancel-apt-btn"
                         onClick={() => handleCancel(apt)}
-                        disabled={busyKey !== null}
+                        disabled={busyKeys.size > 0}
                         aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
                       >
                         <XCircle size={16} />
-                        {busyKey === apt.id ? 'מבטל...' : 'ביטול תור'}
+                        {isBusy(apt.id) ? 'מבטל...' : 'ביטול תור'}
                       </button>
                     </div>
                   </div>
@@ -196,11 +196,11 @@ const ManagerDashboardPage = () => {
                               type="button"
                               className="unassign-btn"
                               onClick={() => handleUnassign(apt, item)}
-                              disabled={busyKey !== null}
+                              disabled={busyKeys.size > 0}
                               aria-label={`ביטול שיבוץ של ${item.users?.first_name || ''} לטיפול ${item.service_types?.name || ''}`}
                             >
                               <UserX size={14} />
-                              {busyKey === `unassign:${item.id}` ? 'מבטל שיבוץ...' : 'ביטול שיבוץ'}
+                              {isBusy(`unassign:${item.id}`) ? 'מבטל שיבוץ...' : 'ביטול שיבוץ'}
                             </button>
                           )}
                         </div>
@@ -234,11 +234,11 @@ const ManagerDashboardPage = () => {
                       type="button"
                       className="cancel-apt-btn"
                       onClick={() => handleCancel(apt)}
-                      disabled={busyKey !== null}
+                      disabled={busyKeys.size > 0}
                       aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
                     >
                       <XCircle size={16} />
-                      {busyKey === apt.id ? 'מבטל...' : 'ביטול'}
+                      {isBusy(apt.id) ? 'מבטל...' : 'ביטול'}
                     </button>
                   </div>
                 </div>

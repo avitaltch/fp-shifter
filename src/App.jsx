@@ -1,29 +1,33 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
 import Footer from './components/Footer/Footer';
-import LandingPage from './pages/LandingPage';
-import LoginPage from './pages/LoginPage';
-import ManagerDashboardPage from './pages/ManagerDashboardPage';
-import ShiftAssignmentPage from './pages/ShiftAssignmentPage';
-import CustomerBookingPage from './pages/CustomerBookingPage';
-import BookingSuccessPage from './pages/BookingSuccessPage';
-import BookingManagePage from './pages/BookingManagePage';
-import EmployeeAvailabilityPage from './pages/EmployeeAvailabilityPage';
-import MyShiftsPage from './pages/MyShiftsPage';
-import AboutPage from './pages/AboutPage';
-import ServiceManagementPage from './pages/ServiceManagementPage';
-import TeamPage from './pages/TeamPage';
-import RecommendationsPage from './pages/RecommendationsPage';
-import EmployeeProfilePage from './pages/EmployeeProfilePage';
-import NotFoundPage from './pages/NotFoundPage';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
+import LoadingSpinner from './components/LoadingSpinner/LoadingSpinner';
+
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const ManagerDashboardPage = lazy(() => import('./pages/ManagerDashboardPage'));
+const ShiftAssignmentPage = lazy(() => import('./pages/ShiftAssignmentPage'));
+const CustomerBookingPage = lazy(() => import('./pages/CustomerBookingPage'));
+const BookingSuccessPage = lazy(() => import('./pages/BookingSuccessPage'));
+const BookingManagePage = lazy(() => import('./pages/BookingManagePage'));
+const EmployeeAvailabilityPage = lazy(() => import('./pages/EmployeeAvailabilityPage'));
+const MyShiftsPage = lazy(() => import('./pages/MyShiftsPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const ServiceManagementPage = lazy(() => import('./pages/ServiceManagementPage'));
+const TeamPage = lazy(() => import('./pages/TeamPage'));
+const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'));
+const EmployeeProfilePage = lazy(() => import('./pages/EmployeeProfilePage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <Navbar />
       <main style={{ flex: 1 }}>
-        <Routes>
+        <Suspense fallback={<LoadingSpinner text="טוען עמוד..." />}>
+          <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -77,7 +81,8 @@ function App() {
           } />
 
           <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </main>
       <Footer />
     </div>
