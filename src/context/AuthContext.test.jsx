@@ -1,6 +1,7 @@
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AuthProvider, useAuth } from './AuthContext';
+import { useAuth } from './AuthContext';
+import { AuthProvider } from './AuthProvider';
 import { supabase } from '../lib/supabase';
 
 vi.mock('../lib/supabase', () => ({
@@ -283,6 +284,79 @@ describe('AuthContext', () => {
       expect(screen.getByTestId('session')).toHaveTextContent('user-2');
     });
     expect(screen.getByTestId('role')).toHaveTextContent('Employee');
+  });
+
+  it('does not reload the profile when INITIAL_SESSION repeats the same user', async () => {
+    const currentSession = { user: { id: 'user-1' } };
+    supabase.auth.getSession.mockResolvedValue({ data: { session: currentSession } });
+    mockUsersSingle({
+      data: { id: 'user-1', first_name: 'דנה', last_name: 'לוי', role: 'Employee' },
+      error: null,
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(screen.getByTestId('role')).toHaveTextContent('Employee'));
+
+    await act(async () => {
+      authChangeCb('INITIAL_SESSION', currentSession);
+    });
+    expect(supabase.from).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a stale profile response after sign-out', async () => {
+    let resolveProfile;
+    const pendingProfile = new Promise((resolve) => { resolveProfile = resolve; });
+    supabase.auth.getSession.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+    });
+    const single = vi.fn().mockReturnValue(pendingProfile);
+    supabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({ single }),
+      }),
+    });
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+    await waitFor(() => expect(single).toHaveBeenCalled());
+
+    await act(async () => {
+      authChangeCb('SIGNED_OUT', null);
+    });
+    expect(screen.getByTestId('session')).toHaveTextContent('none');
+
+    await act(async () => {
+      resolveProfile({
+        data: { id: 'user-1', first_name: 'ישן', last_name: 'משתמש', role: 'Admin' },
+        error: null,
+      });
+      await pendingProfile;
+    });
+    expect(screen.getByTestId('role')).toHaveTextContent('none');
+    expect(screen.getByTestId('name')).toHaveTextContent('none');
+  });
+
+  it('stops loading when session initialization rejects', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    supabase.auth.getSession.mockRejectedValue(new Error('storage unavailable'));
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+    });
+    expect(screen.getByTestId('profile-error')).toHaveTextContent('true');
   });
 
   it('signOut delegates to supabase.auth.signOut', async () => {
