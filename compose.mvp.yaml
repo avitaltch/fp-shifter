@@ -1,0 +1,72 @@
+name: shiftsync-mvp
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: shiftsync
+      POSTGRES_USER: shiftsync
+      POSTGRES_PASSWORD: ${MVP_POSTGRES_PASSWORD:-shiftsync_local}
+    ports:
+      - "${MVP_POSTGRES_PORT:-54320}:5432"
+    volumes:
+      - mvp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shiftsync -d shiftsync"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    build:
+      context: ./apps/api
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
+      CORS_ORIGINS: ${MVP_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "${MVP_API_PORT:-3000}:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health/ready').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  seed:
+    profiles: ["tools"]
+    build:
+      context: ./apps/api
+    command: ["npm", "run", "db:seed"]
+    environment:
+      DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+volumes:
+  mvp_postgres_data:

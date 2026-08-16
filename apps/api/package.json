@@ -1,0 +1,46 @@
+{
+  "name": "@shiftsync/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted NestJS API for ShiftSync",
+  "license": "UNLICENSED",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "lint": "oxlint src test",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "node-pg-migrate --migrations-dir migrations --migrations-table shiftsync_migrations up",
+    "db:migrate:down": "node-pg-migrate --migrations-dir migrations --migrations-table shiftsync_migrations down",
+    "db:seed": "node scripts/seed.cjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.1",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.2.1",
+    "@nestjs/platform-express": "^11.2.1",
+    "@nestjs/swagger": "^11.4.6",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "node-pg-migrate": "^9.0.0",
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^11.2.1",
+    "@types/node": "^24.10.0",
+    "@types/pg": "^8.15.6",
+    "@types/supertest": "^6.0.3",
+    "oxlint": "^1.69.0",
+    "supertest": "^7.1.4",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "js-yaml": "5.3.0"
+  }
+}

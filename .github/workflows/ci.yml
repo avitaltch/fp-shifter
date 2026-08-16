@@ -17,8 +17,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/api/package-lock.json
       - run: npm ci
+      - run: npm --prefix apps/api ci
       - run: npm run lint
+      - run: npm run api:lint
+      - run: npm run api:typecheck
+      - run: npm run api:test
+      - run: npm run api:build
       - run: npm run sql:check
       - run: npm test
       - run: npm run build
