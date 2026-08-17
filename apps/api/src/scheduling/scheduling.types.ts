@@ -32,3 +32,10 @@ export interface ActiveAppointmentStepRecord {
   startsAt: Date;
   endsAt: Date;
 }
+
+export interface PublicBusinessSchedulingContext {
+  businessId: string;
+  businessSlug: string;
+  locationId: string;
+  timezone: string;
+}

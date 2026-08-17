@@ -22,6 +22,6 @@ import { TenantDatabaseService } from './tenant-database.service';
     DatabaseService,
     TenantDatabaseService,
   ],
-  exports: [DatabaseService, TenantDatabaseService],
+  exports: [DATABASE_POOL, DatabaseService, TenantDatabaseService],
 })
 export class DatabaseModule {}

@@ -17,6 +17,7 @@
     "api:typecheck": "npm --prefix apps/api run typecheck",
     "api:test": "npm --prefix apps/api run test",
     "api:test:integration": "npm --prefix apps/api run test:integration",
+    "api:benchmark:scheduler": "npm --prefix apps/api run benchmark:scheduler",
     "api:build": "npm --prefix apps/api run build",
     "mvp:up": "docker compose -f compose.mvp.yaml up --build",
     "mvp:down": "docker compose -f compose.mvp.yaml down",

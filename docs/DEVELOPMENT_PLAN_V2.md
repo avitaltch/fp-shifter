@@ -144,6 +144,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R2 — Prove the ordered multi-provider scheduler
 
 **Estimate:** 4–6 focused engineering days
+**Status:** Implemented and locally verified on `codex/mvp-foundation-v2`
 **Goal:** Validate the product's central technical and commercial hypothesis early.
 
 **Work**
@@ -413,4 +414,4 @@ Do not add these before evidence requires them:
 
 ## Immediate next action
 
-Implement V2-03, the pure ordered multi-provider scheduler and representative benchmark. Use the tenant-scoped candidate repository introduced in V2-02 as its persistence boundary.
+Implement R3's atomic booking command and concurrency test. Recompute the selected plan inside one transaction and treat PostgreSQL exclusion conflicts as the final concurrency authority.

@@ -119,6 +119,43 @@ describe('AppModule with PostgreSQL', () => {
     ]);
   });
 
+  it('searches the seeded compound visit through the public API without exposing staff', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/public/businesses/happy-pets-demo/availability/search')
+      .send({
+        date: '2030-01-07',
+        serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+      })
+      .expect('x-request-id', /.+/)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          businessSlug: 'happy-pets-demo',
+          date: '2030-01-07',
+          serviceCount: 2,
+          totalDurationMinutes: 60,
+          totalPriceMinor: 20000,
+          currency: 'ILS',
+          diagnostics: [],
+        });
+        expect(body.slots[0]).toEqual({
+          startsAt: '2030-01-07T07:45:00.000Z',
+          endsAt: '2030-01-07T08:45:00.000Z',
+        });
+        expect(JSON.stringify(body)).not.toContain('providerUserId');
+      });
+  });
+
+  it('rejects a service identifier owned by another public business', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/public/businesses/happy-pets-demo/availability/search')
+      .send({ date: '2030-01-07', serviceIds: [BEAUTY_SERVICE_ID] })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 'INVALID_SERVICE_SELECTION' });
+      });
+  });
+
   it('returns no location-owned records when a location belongs to another tenant', async () => {
     const happyPetsScope = TenantScope.forBusiness(HAPPY_PETS_BUSINESS_ID);
     const rangeStart = new Date('2030-01-07T06:00:00.000Z');

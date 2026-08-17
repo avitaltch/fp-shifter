@@ -25,7 +25,22 @@ The database integration suite uses the real AppModule and requires a migrated, 
 DATABASE_URL=postgres://shiftsync:shiftsync_local@127.0.0.1:54320/shiftsync \
   NODE_ENV=test \
   SWAGGER_ENABLED=false \
-  npm run api:test:integration
+npm run api:test:integration
+```
+
+Run the deterministic large-studio and fully-booked ten-barber scheduler benchmark:
+
+```bash
+npm run api:benchmark:scheduler
+```
+
+Public compound availability is exposed without provider identities:
+
+```http
+POST /api/v1/public/businesses/:businessSlug/availability/search
+Content-Type: application/json
+
+{"date":"2030-01-07","serviceIds":["service-uuid-1","service-uuid-2"]}
 ```
 
 ## Local container stack
