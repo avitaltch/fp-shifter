@@ -1,8 +1,10 @@
 # Self-hosting ShiftSync
 
-ShiftSync can be migrated incrementally. Move the stateless web app first, then move the stateful Supabase stack after backups, restore rehearsals, and monitoring are in place.
+> **Legacy contingency, not the target MVP architecture.** This guide preserves the existing Supabase-backed demo while the frontend journeys migrate to NestJS/PostgreSQL. New backend development follows [`apps/api/README.md`](../apps/api/README.md), [ADR 0002](adr/0002-nestjs-modular-monolith.md), and [ADR 0003](adr/0003-postgresql-migrations-and-jobs.md).
 
-## Target shape
+The legacy demo can still be migrated incrementally. Move the stateless web app first, then move its stateful Supabase stack only if maintaining that interim path is operationally necessary.
+
+## Legacy Supabase shape
 
 ```text
 Browser
@@ -14,7 +16,7 @@ Browser
                                       └── Postgres + persistent backups
 ```
 
-The browser still uses the Supabase protocol, but neither application hosting nor data hosting has to be a managed SaaS dependency.
+The current demo browser still uses the Supabase protocol, but neither application hosting nor data hosting has to be a managed SaaS dependency. The target product instead routes the browser through the NestJS API.
 
 ## Phase 1: move the web app off Vercel
 

@@ -14,6 +14,7 @@ describe('validateEnvironment', () => {
       API_PORT: 3100,
       DATABASE_URL: 'postgres://user:password@localhost:5432/shiftsync',
       CORS_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173',
+      SWAGGER_ENABLED: true,
     });
   });
 
@@ -35,6 +36,43 @@ describe('validateEnvironment', () => {
       }),
     ).toThrow('API_PORT must be an integer between 1 and 65535');
   });
+
+  it('rejects a blank API host', () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+        API_HOST: ' ',
+      }),
+    ).toThrow('API_HOST is required');
+  });
+
+  it('disables Swagger by default in production', () => {
+    expect(
+      validateEnvironment({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+      }).SWAGGER_ENABLED,
+    ).toBe(false);
+  });
+
+  it('accepts an explicit Swagger setting', () => {
+    expect(
+      validateEnvironment({
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+        SWAGGER_ENABLED: 'true',
+      }).SWAGGER_ENABLED,
+    ).toBe(true);
+  });
+
+  it('rejects a malformed Swagger setting', () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+        SWAGGER_ENABLED: 'yes',
+      }),
+    ).toThrow('SWAGGER_ENABLED must be true or false');
+  });
 });
 
 describe('parseCorsOrigins', () => {
@@ -42,5 +80,20 @@ describe('parseCorsOrigins', () => {
     expect(
       parseCorsOrigins('http://localhost:5173, ,http://localhost:5173'),
     ).toEqual(['http://localhost:5173']);
+  });
+
+  it('normalizes origin trailing slashes', () => {
+    expect(parseCorsOrigins('https://app.example.com/')).toEqual([
+      'https://app.example.com',
+    ]);
+  });
+
+  it('rejects paths and non-HTTP origins', () => {
+    expect(() => parseCorsOrigins('https://app.example.com/path')).toThrow(
+      'CORS origin must be an HTTP(S) origin',
+    );
+    expect(() => parseCorsOrigins('file:///tmp/app')).toThrow(
+      'CORS origin must be an HTTP(S) origin',
+    );
   });
 });

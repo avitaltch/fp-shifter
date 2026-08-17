@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: shiftsync
       POSTGRES_PASSWORD: ${MVP_POSTGRES_PASSWORD:-shiftsync_local}
     ports:
-      - "${MVP_POSTGRES_PORT:-54320}:5432"
+      - "127.0.0.1:${MVP_POSTGRES_PORT:-54320}:5432"
     volumes:
       - mvp_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -39,8 +39,9 @@ services:
       API_PORT: 3000
       DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
       CORS_ORIGINS: ${MVP_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      SWAGGER_ENABLED: ${MVP_SWAGGER_ENABLED:-true}
     ports:
-      - "${MVP_API_PORT:-3000}:3000"
+      - "127.0.0.1:${MVP_API_PORT:-3000}:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully

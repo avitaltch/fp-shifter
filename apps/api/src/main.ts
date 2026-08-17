@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { Logger } from '@nestjs/common';
+import { ConsoleLogger, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
@@ -10,7 +10,9 @@ import {
 } from './config/environment';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: new ConsoleLogger({ json: true, colors: false }),
+  });
   const config = app.get(ConfigService<ApplicationEnvironment, true>);
   const host = config.get('API_HOST', { infer: true });
   const port = config.get('API_PORT', { infer: true });
@@ -19,10 +21,18 @@ async function bootstrap(): Promise<void> {
     corsOrigins: parseCorsOrigins(
       config.get('CORS_ORIGINS', { infer: true }),
     ),
+    enableSwagger: config.get('SWAGGER_ENABLED', { infer: true }),
   });
 
   await app.listen(port, host);
-  Logger.log(`ShiftSync API listening on ${host}:${port}`, 'Bootstrap');
+  Logger.log({ event: 'api_listening', host, port }, 'Bootstrap');
 }
 
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  const logger = new Logger('Bootstrap');
+  logger.error(
+    'API bootstrap failed',
+    error instanceof Error ? error.stack : undefined,
+  );
+  process.exitCode = 1;
+});
