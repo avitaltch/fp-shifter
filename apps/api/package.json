@@ -11,6 +11,7 @@
     "lint": "oxlint src test",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.mts",
     "test:watch": "vitest",
     "db:migrate": "node-pg-migrate --migrations-dir migrations --migrations-table shiftsync_migrations up",
     "db:migrate:down": "node-pg-migrate --migrations-dir migrations --migrations-table shiftsync_migrations down",

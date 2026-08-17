@@ -16,10 +16,11 @@
     "api:lint": "npm --prefix apps/api run lint",
     "api:typecheck": "npm --prefix apps/api run typecheck",
     "api:test": "npm --prefix apps/api run test",
+    "api:test:integration": "npm --prefix apps/api run test:integration",
     "api:build": "npm --prefix apps/api run build",
     "mvp:up": "docker compose -f compose.mvp.yaml up --build",
     "mvp:down": "docker compose -f compose.mvp.yaml down",
-    "mvp:seed": "docker compose -f compose.mvp.yaml --profile tools run --rm seed",
+    "mvp:seed": "docker compose -f compose.mvp.yaml --profile tools run --rm --build seed",
     "sql:generate": "node scripts/generate-install-sql.mjs",
     "sql:check": "node scripts/generate-install-sql.mjs --check",
     "screenshots": "node scripts/screenshots.mjs"
@@ -29,7 +30,7 @@
     "lucide-react": "^1.21.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

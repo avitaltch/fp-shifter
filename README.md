@@ -5,7 +5,7 @@
 
 ShiftSync is an online booking and shift-management system for service businesses (demo: a beauty salon). Customers book only when a qualified employee is free; managers run the day; employees publish availability and claim open work.
 
-Built with **React 19 + Vite** (Hebrew, RTL) and the open-source **Supabase** stack (Postgres, Auth, RLS, Edge Functions). The web app can run as a portable Docker container or on Vercel.
+The current demo is built with **React 19 + Vite** (Hebrew, RTL) and Supabase. The target MVP replaces direct Supabase access with a self-hosted **NestJS + PostgreSQL** backend while preserving the existing frontend behind its API facade.
 
 ---
 
@@ -59,7 +59,7 @@ Login: [https://fp-shifter.vercel.app/login](https://fp-shifter.vercel.app/login
 
 ---
 
-## External services and integrations
+## Current demo services and integrations
 
 | Service | Type | Role in the product |
 | --- | --- | --- |
@@ -199,7 +199,7 @@ This project was built in **Cursor** with AI agents as the primary coding workfl
 2. **Scoped fixers** — fixer subagents implemented confirmed gaps with strict file scopes so disjoint work (e.g. auth vs booking) could run in parallel without colliding.
 3. **Reviewer → builder loop** — a **GLM** reviewer agent inspected feature commits; its findings were fed back to a **Grok** builder agent for fixes (example: bulk availability week/month + workday toggles).
 4. **Model mix** — different models per task (explore/audit, implement, review) rather than one model for everything.
-5. **TDD / CI guardrails** — features land with Vitest coverage (**334** unit tests), network-stubbed Playwright e2e (`npm run e2e`), and CI (lint + unit + build + e2e) on every push/PR.
+5. **TDD / CI guardrails** — features land with Vitest coverage (**342** frontend unit tests), network-stubbed Playwright e2e (`npm run e2e`), and CI coverage for the frontend, NestJS API, PostgreSQL migrations, seed, and database readiness.
 
 ---
 
@@ -240,7 +240,7 @@ supabase/
 6. `cp .env.example .env` → set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
 7. `npm install && npm run dev`
 
-## Self-host
+## Self-host the legacy demo frontend
 
 The frontend is an immutable container: Supabase connection values are injected when the container starts, so the same image can move from managed Supabase to your own instance without rebuilding.
 
@@ -251,7 +251,7 @@ docker compose --env-file .env.selfhost up -d --build
 curl --fail http://localhost:8080/healthz
 ```
 
-For the phased frontend, database, Auth, and Edge Function migration—including rollback and backup requirements—see [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md). The architecture decision is recorded in [`docs/adr/0001-portable-self-hosting.md`](docs/adr/0001-portable-self-hosting.md).
+This keeps the existing Supabase-backed demo portable; it is not the target backend. See [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) for that contingency and [`apps/api/README.md`](apps/api/README.md) for the NestJS/PostgreSQL replacement stack.
 
 ## Deploy (Vercel)
 
@@ -278,4 +278,4 @@ For the phased frontend, database, Auth, and Edge Function migration—including
 | `npm run screenshots` | Capture README PNGs into `docs/screenshots/` (stubbed) |
 | `npm run build` | Production build |
 
-CI runs lint, unit tests, build, and e2e on every push/PR.
+CI runs frontend and API lint/tests/builds, PostgreSQL migration/seed/readiness integration, migration rollback/reapply, SQL consistency, and browser E2E on every push/PR.

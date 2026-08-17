@@ -44,19 +44,27 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - NestJS modular-monolith and PostgreSQL migration/job ADRs.
 - Passing baseline frontend and backend checks.
 
-### At risk
+### Stabilization completed
 
-- The current worktree combines many unrelated or partially related changes.
-- CI does not validate PostgreSQL, migrations, or the real readiness path.
-- A high-severity frontend dependency advisory needs a patch.
-- Logging, request IDs, pool failure handling, and safe local port defaults are missing.
-- Self-hosting documentation describes both the old and target architectures.
+- The broad foundation was divided into five reviewable commits and pushed to a dedicated branch.
+- CI provisions PostgreSQL and validates migration, seed, real readiness, rollback, and reapply.
+- React Router was patched and both production dependency audits are clean.
+- JSON logs, request IDs, pool failure handling, strict HTTP configuration, and loopback-only local ports are implemented.
+- Self-hosting documentation now labels Supabase as the legacy contingency and NestJS/PostgreSQL as the target.
+
+### Scheduling data foundation completed
+
+- Tenant-safe customers, services, provider skills, business hours, availability, appointments, and ordered steps are migrated.
+- Composite foreign keys reject cross-tenant relationships at the database boundary.
+- The tenant-scoped scheduling repository supplies indexed candidate reads for the pure scheduler.
+- The seed demonstrates a trim-to-vaccination handoff between a groomer and veterinarian.
+- GiST range indexes serve availability and active-step overlap queries; the provider exclusion constraint rejects collisions.
 
 ### Not started in the target backend
 
-- Tenant-enforced repositories and guards.
+- Tenant membership guards and authenticated scope resolution.
 - Authentication and role authorization.
-- Services, provider skills, working hours, and exceptions.
+- Configuration APIs for services, provider skills, working hours, and exceptions.
 - Ordered multi-provider availability engine.
 - Atomic booking and customer management tokens.
 - Manager and provider operational APIs.
@@ -79,6 +87,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R0 — Stabilize the foundation
 
 **Estimate:** 1–2 focused engineering days
+**Status:** Implemented and locally verified on `codex/mvp-foundation-v2`
 **Goal:** Make the existing foundation safe to review and safe to build on.
 
 **Work**
@@ -105,6 +114,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R1 — Build the scheduling data foundation
 
 **Estimate:** 3–5 focused engineering days
+**Status:** Implemented and locally verified on `codex/mvp-foundation-v2`
 **Goal:** Represent the compound-booking domain with tenant-safe persistence.
 
 **Work**
@@ -403,4 +413,4 @@ Do not add these before evidence requires them:
 
 ## Immediate next action
 
-Execute V2-01 only. Once its exit gate is green, implement V2-02 and V2-03 as the shortest path to proving the compound scheduling differentiator.
+Implement V2-03, the pure ordered multi-provider scheduler and representative benchmark. Use the tenant-scoped candidate repository introduced in V2-02 as its persistence boundary.

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { DATABASE_POOL } from './database.constants';
 import { DatabaseService } from './database.service';
+import { TenantDatabaseService } from './tenant-database.service';
 
 @Module({
   providers: [
@@ -19,7 +20,8 @@ import { DatabaseService } from './database.service';
         }),
     },
     DatabaseService,
+    TenantDatabaseService,
   ],
-  exports: [DatabaseService],
+  exports: [DatabaseService, TenantDatabaseService],
 })
 export class DatabaseModule {}

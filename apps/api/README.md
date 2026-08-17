@@ -19,13 +19,22 @@ npm run api:test
 npm run api:build
 ```
 
+The database integration suite uses the real AppModule and requires a migrated, seeded PostgreSQL database:
+
+```bash
+DATABASE_URL=postgres://shiftsync:shiftsync_local@127.0.0.1:54320/shiftsync \
+  NODE_ENV=test \
+  SWAGGER_ENABLED=false \
+  npm run api:test:integration
+```
+
 ## Local container stack
 
 The replacement stack uses a separate Compose file so the existing self-hosted Supabase path remains available during development.
 
 ```bash
 docker compose -f compose.mvp.yaml up -d --build
-docker compose -f compose.mvp.yaml --profile tools run --rm seed
+docker compose -f compose.mvp.yaml --profile tools run --rm --build seed
 docker compose -f compose.mvp.yaml ps
 ```
 
@@ -37,7 +46,9 @@ Services:
 - Liveness: `GET /api/v1/health/live`
 - Readiness: `GET /api/v1/health/ready`
 
-The default password in `compose.mvp.yaml` is only for an isolated local machine. Copy `.env.mvp.example` and replace it before using any shared environment.
+Published development ports bind to `127.0.0.1`. The default password in `compose.mvp.yaml` is only for an isolated local machine. Copy `.env.mvp.example`, replace the password, and keep PostgreSQL unexposed before using any shared environment.
+
+Swagger is enabled by default in development and disabled by default in production. Set `SWAGGER_ENABLED` explicitly when an environment needs different behavior. `CORS_ORIGINS` accepts only comma-separated HTTP(S) origins without paths.
 
 ## Database lifecycle
 
@@ -61,15 +72,22 @@ Implemented:
 - strict runtime environment validation;
 - versioned REST and OpenAPI foundation;
 - liveness and database-backed readiness;
+- JSON application logs and validated `x-request-id` propagation;
 - injected PostgreSQL pool;
+- idle PostgreSQL pool failure handling;
 - businesses, locations, users and memberships migration;
-- deterministic multi-business seed;
-- unit/controller/HTTP endpoint tests.
+- tenant-safe customers, services, provider skills, hours, availability, appointments, and ordered-step schema;
+- composite tenant foreign keys and provider-time exclusion constraints;
+- deterministic multi-business seed with a groomer-to-veterinarian handoff;
+- tenant-scoped scheduling candidate repository;
+- unit/controller/HTTP endpoint tests;
+- real AppModule/PostgreSQL readiness and seed integration coverage;
+- CI migration rollback and reapply validation.
 
 Not implemented yet:
 
 - authentication endpoints;
 - tenant guards;
-- services, provider skills and availability;
-- compound scheduling and booking;
+- configuration endpoints for services, provider skills and availability;
+- compound scheduling search and atomic booking command;
 - notification worker and waitlist.

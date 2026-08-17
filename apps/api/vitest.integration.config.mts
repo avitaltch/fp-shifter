@@ -4,13 +4,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.spec.ts', 'test/**/*.spec.ts'],
-    exclude: ['test/**/*.integration.spec.ts'],
+    include: ['test/**/*.integration.spec.ts'],
     clearMocks: true,
     restoreMocks: true,
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html'],
-    },
+    sequence: { concurrent: false },
   },
 });

@@ -8,9 +8,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: shiftsync_test
+          POSTGRES_USER: shiftsync
+          POSTGRES_PASSWORD: shiftsync_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shiftsync -d shiftsync_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     env:
       VITE_SUPABASE_URL: https://example.supabase.co
       VITE_SUPABASE_ANON_KEY: test-anon-key
+      DATABASE_URL: postgres://shiftsync:shiftsync_ci@127.0.0.1:5432/shiftsync_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +42,17 @@ jobs:
       - run: npm run api:typecheck
       - run: npm run api:test
       - run: npm run api:build
+      - run: npm --prefix apps/api run db:migrate
+      - run: npm --prefix apps/api run db:seed
+      - run: npm run api:test:integration
+        env:
+          NODE_ENV: test
+          API_HOST: 127.0.0.1
+          API_PORT: 3000
+          CORS_ORIGINS: http://localhost:5173
+          SWAGGER_ENABLED: false
+      - run: npm --prefix apps/api run db:migrate:down
+      - run: npm --prefix apps/api run db:migrate
       - run: npm run sql:check
       - run: npm test
       - run: npm run build
