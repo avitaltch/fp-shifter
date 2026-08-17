@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { listServices, getAvailableSlots, bookAppointment } from '../lib/api';
 import { friendlyError } from '../lib/errors';
-import { Check, Clock, Calendar as CalendarIcon, User, Scissors } from 'lucide-react';
+import { Check, Clock, Calendar as CalendarIcon, User, Scissors, Sparkles } from 'lucide-react';
 import { jerusalemTodayString, jerusalemAddDaysString, toTimeDisplay, formatDuration, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
@@ -159,16 +159,31 @@ const CustomerBookingPage = () => {
   };
 
   const { total, time } = calculateTotal();
+  const progressStep =
+    selectedServices.length === 0 ? 1 : !selectedDate || !selectedTime ? 2 : 3;
 
   return (
     <PageContainer size="md" className="booking-page">
       <div className="booking-header">
+        <span className="booking-kicker"><Sparkles size={15} aria-hidden="true" /> מסלול ביקור חכם</span>
         <h1>הזמנת תור חדש</h1>
-        <p className="subtitle">יש לבחור את הטיפולים לשילוב בביקור הקרוב.</p>
+        <p className="subtitle">בוחרים את השירותים לפי הסדר — אנחנו נמצא את הצוות והזמן שמתאימים לכולם.</p>
         <p className="manage-entry">
           יש לכם תור?{' '}
           <Link to="/book/manage">לניהול תור קיים</Link>
         </p>
+        <ol className="booking-progress" aria-label={`שלב ${progressStep} מתוך 3`}>
+          {['שירותים', 'מועד', 'פרטים'].map((label, index) => {
+            const step = index + 1;
+            const state = step < progressStep ? 'done' : step === progressStep ? 'active' : '';
+            return (
+              <li key={label} className={state} aria-current={state === 'active' ? 'step' : undefined}>
+                <span>{state === 'done' ? <Check size={14} aria-hidden="true" /> : step}</span>
+                {label}
+              </li>
+            );
+          })}
+        </ol>
       </div>
 
       <form onSubmit={handleBooking} className="booking-form">
@@ -194,6 +209,11 @@ const CustomerBookingPage = () => {
                     onClick={() => toggleService(service.id)}
                     aria-pressed={selected}
                   >
+                    {selected && (
+                      <span className="service-order" aria-label={`שירות מספר ${selectedServices.indexOf(service.id) + 1}`}>
+                        {selectedServices.indexOf(service.id) + 1}
+                      </span>
+                    )}
                     <div className="service-info">
                       <h3>{service.name}</h3>
                       <div className="service-meta">
@@ -203,7 +223,7 @@ const CustomerBookingPage = () => {
                         </span>
                       </div>
                     </div>
-                    <div className="check-icon">
+                    <div className="check-icon" aria-hidden="true">
                       {selected && <Check size={20} />}
                     </div>
                   </button>
@@ -306,7 +326,7 @@ const CustomerBookingPage = () => {
 
         {submitError && <div className="error-state" role="alert">{submitError}</div>}
 
-        <div className="booking-summary">
+        <div className="booking-summary" aria-live="polite">
           <div className="summary-details">
             <span><Clock size={16} /> זמן מוערך: <strong>{formatDuration(time)}</strong></span>
             <span>סך הכל: <strong>₪{total}</strong></span>

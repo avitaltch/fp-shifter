@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useLayoutEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
 import Footer from './components/Footer/Footer';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
@@ -22,10 +22,18 @@ const EmployeeProfilePage = lazy(() => import('./pages/EmployeeProfilePage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
 function App() {
+  const { pathname } = useLocation();
+
+  useLayoutEffect(() => {
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [pathname]);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">דלג לתוכן הראשי</a>
       <Navbar />
-      <main style={{ flex: 1 }}>
+      <main id="main-content" className="app-main">
         <Suspense fallback={<LoadingSpinner text="טוען עמוד..." />}>
           <Routes>
           <Route path="/" element={<LandingPage />} />

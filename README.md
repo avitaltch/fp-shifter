@@ -182,6 +182,8 @@ Source of truth: [`supabase/schema.sql`](supabase/schema.sql). You can also open
 
 Captured from the real React app (Hebrew RTL) against the network-stubbed Playwright setup (`node scripts/screenshots.mjs`).
 
+![ShiftSync landing page](docs/screenshots/00-landing.png)
+
 | | |
 | --- | --- |
 | **Customer booking** — services, date, and available slots | **Booking success** — confirmation summary + manage link |

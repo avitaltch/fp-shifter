@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Calendar, LayoutDashboard, Clock, Scissors, CheckCircle, Menu, X, LogOut, LogIn, Users, Star, Briefcase, UserRound } from 'lucide-react';
+import { Calendar, LayoutDashboard, Clock, Waypoints, CheckCircle, Menu, X, LogOut, LogIn, Users, Star, Briefcase, UserRound } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import './Navbar.css';
@@ -75,7 +75,7 @@ const Navbar = () => {
   const renderLink = ({ to, icon: Icon, label }) => (
     <li key={to} className="nav-item">
       <Link to={to} className={`nav-links ${isActive(to)}`} onClick={closeMenu}>
-        <Icon size={18} />
+        <Icon size={18} aria-hidden="true" />
         {label}
       </Link>
     </li>
@@ -85,8 +85,13 @@ const Navbar = () => {
     <nav className={`navbar${useDrawer ? ' navbar--drawer' : ''}`}>
       <div className="navbar-container">
         <Link to="/" className="navbar-logo" onClick={closeMenu}>
-          <Scissors className="logo-icon" />
-          <span>ShiftSync</span>
+          <span className="logo-mark" aria-hidden="true">
+            <Waypoints className="logo-icon" size={23} />
+          </span>
+          <span className="logo-copy">
+            <span className="logo-wordmark" dir="ltr">Shift<span>Sync</span></span>
+            <span className="logo-tagline">כל הביקור, בתיאום אחד</span>
+          </span>
         </Link>
 
         {useDrawer && (
@@ -137,7 +142,7 @@ const Navbar = () => {
           {isStaff && (
             <li className="nav-item">
               <Link to="/employee/profile" className={`nav-links ${isActive('/employee/profile')}`} onClick={closeMenu}>
-                <UserRound size={18} />
+                <UserRound size={18} aria-hidden="true" />
                 הפרופיל שלי
               </Link>
             </li>
@@ -145,12 +150,12 @@ const Navbar = () => {
           <li className="nav-item auth-item">
             {session ? (
               <button type="button" onClick={handleLogout} className="nav-links logout-btn">
-                <LogOut size={18} />
+                <LogOut size={18} aria-hidden="true" />
                 התנתק
               </button>
             ) : (
               <Link to="/login" className={`nav-links ${isActive('/login')}`} onClick={closeMenu}>
-                <LogIn size={18} />
+                <LogIn size={18} aria-hidden="true" />
                 כניסת צוות
               </Link>
             )}

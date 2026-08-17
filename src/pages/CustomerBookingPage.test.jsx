@@ -100,6 +100,20 @@ describe('CustomerBookingPage', () => {
     expect(screen.getByText('שעה ו-45 דקות')).toBeInTheDocument();
   });
 
+  it('shows the selected service order and advances the visual progress', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.click(screen.getByText('צבע'));
+
+    expect(screen.getByLabelText('שירות מספר 1')).toHaveTextContent('1');
+    expect(screen.getByLabelText('שירות מספר 2')).toHaveTextContent('2');
+    expect(screen.getByText('מועד').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step'
+    );
+  });
+
   it('fetches slots with the chosen date and service ids and shows them as HH:MM chips', async () => {
     renderPage();
 

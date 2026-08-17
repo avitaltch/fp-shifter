@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, UserX } from 'lucide-react';
+import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, UserX, CircleAlert, Sparkles } from 'lucide-react';
 import { getDashboardData, cancelAppointment, unassignShift } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
@@ -102,36 +102,39 @@ const ManagerDashboardPage = () => {
   return (
     <PageContainer size="lg" className="dashboard-page">
       <header className="dashboard-header">
-        <h1>דאשבורד מנהל - תמונת מצב יומית</h1>
+        <div>
+          <span className="dashboard-eyebrow"><Sparkles size={14} aria-hidden="true" /> תמונת מצב חיה</span>
+          <h1>דאשבורד מנהל - תמונת מצב יומית</h1>
+        </div>
         <p className="date-display">{formatHebrewDate(todayStr)}</p>
       </header>
 
       <Alert type={message?.type}>{message?.text}</Alert>
 
       <div className="stats-grid">
-        <div className="stat-card">
+        <div className="stat-card stat-card--indigo" style={{ '--stat-delay': '0ms' }}>
           <div className="stat-icon"><Calendar /></div>
           <div className="stat-content">
             <h3>ביקורים היום</h3>
             <p className="stat-number">{todayAppointments.length}</p>
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card--coral" style={{ '--stat-delay': '70ms' }}>
           <div className="stat-icon"><Clock /></div>
           <div className="stat-content">
             <h3>טיפולים היום</h3>
             <p className="stat-number">{todayItemsCount}</p>
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card--mint" style={{ '--stat-delay': '140ms' }}>
           <div className="stat-icon"><Users /></div>
           <div className="stat-content">
             <h3>עובדים במשמרת</h3>
             <p className="stat-number">{activeEmployees.size}</p>
           </div>
         </div>
-        <div className={`stat-card ${unassignedToday > 0 ? 'alert-card' : ''}`}>
-          <div className="stat-icon"><Users /></div>
+        <div className={`stat-card stat-card--amber ${unassignedToday > 0 ? 'alert-card' : ''}`} style={{ '--stat-delay': '210ms' }}>
+          <div className="stat-icon"><CircleAlert /></div>
           <div className="stat-content">
             <h3>ממתינים לשיבוץ</h3>
             <p className="stat-number">{unassignedToday}</p>
@@ -145,12 +148,12 @@ const ManagerDashboardPage = () => {
           <EmptyState text="אין תורים שנקבעו להיום." />
         ) : (
           <div className="appointments-list">
-            {todayAppointments.map((apt) => {
+            {todayAppointments.map((apt, appointmentIndex) => {
               const items = [...(apt.appointment_items || [])].sort((a, b) =>
                 a.start_time.localeCompare(b.start_time)
               );
               return (
-                <div key={apt.id} className="appointment-card">
+                <div key={apt.id} className="appointment-card" style={{ '--appointment-index': appointmentIndex }}>
                   <div className="apt-header">
                     <div className="apt-customer">
                       <h3>לקוח/ה: {apt.customers?.first_name} {apt.customers?.last_name}</h3>
@@ -205,7 +208,7 @@ const ManagerDashboardPage = () => {
                           )}
                         </div>
                         {index < items.length - 1 && (
-                          <ArrowLeft className="chain-arrow" />
+                          <ArrowLeft className="chain-arrow" aria-hidden="true" />
                         )}
                       </div>
                     ))}
@@ -221,8 +224,8 @@ const ManagerDashboardPage = () => {
         <section className="timeline-section future-section">
           <h2>הימים הקרובים</h2>
           <div className="appointments-list compact">
-            {futureAppointments.map((apt) => (
-              <div key={apt.id} className="appointment-card compact-card">
+            {futureAppointments.map((apt, appointmentIndex) => (
+              <div key={apt.id} className="appointment-card compact-card" style={{ '--appointment-index': appointmentIndex }}>
                 <div className="apt-header">
                   <h3>
                     {formatHebrewDate(apt.visit_date)} | {apt.customers?.first_name}{' '}

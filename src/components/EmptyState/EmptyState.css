@@ -5,16 +5,19 @@
   justify-content: center;
   padding: 3rem 1.5rem;
   text-align: center;
-  background: var(--bg-body, #F9FAFB);
-  border-radius: 8px;
-  border: 1px dashed var(--border-color, #E5E7EB);
+  background:
+    radial-gradient(circle at 50% 0, var(--primary-soft), transparent 12rem),
+    rgba(255, 253, 249, 0.72);
+  border-radius: var(--radius-lg);
+  border: 1px dashed rgba(75, 79, 196, 0.26);
   margin: 1.5rem 0;
 }
 
 .empty-state-icon {
-  color: var(--text-secondary, #6B7280);
+  color: var(--primary);
   margin-bottom: 1rem;
-  opacity: 0.5;
+  opacity: 0.65;
+  animation: gentleFloat 3.5s ease-in-out infinite;
 }
 
 .empty-state-text {

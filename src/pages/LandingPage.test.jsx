@@ -8,10 +8,11 @@ const renderWithRouter = (ui) => {
 };
 
 describe('LandingPage Component', () => {
-  it('renders the hero section with generic title', () => {
+  it('renders the compound-booking value proposition', () => {
     renderWithRouter(<LandingPage />);
-    expect(screen.getByText(/ניהול משמרות, עכשיו/i)).toBeInTheDocument();
-    expect(screen.getByText(/ללא חיכוך/i)).toBeInTheDocument();
+    expect(screen.getByText(/ביקור אחד. כמה שירותים./i)).toBeInTheDocument();
+    expect(screen.getByText(/הכל מתחבר/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('שלושה שירותים רצופים')).toBeInTheDocument();
   });
 
   it('links the booking action to the single-tenant /book route', () => {
@@ -23,8 +24,8 @@ describe('LandingPage Component', () => {
 
   it('renders feature cards', () => {
     renderWithRouter(<LandingPage />);
-    expect(screen.getByText(/תכנון מהיר/i)).toBeInTheDocument();
-    expect(screen.getByText(/ניהול צוותים/i)).toBeInTheDocument();
-    expect(screen.getByText(/זמינות חכמה/i)).toBeInTheDocument();
+    expect(screen.getByText(/ביקור מורכב, מסלול אחד/i)).toBeInTheDocument();
+    expect(screen.getByText(/הצוות נשאר מסונכרן/i)).toBeInTheDocument();
+    expect(screen.getByText(/היומן עובד בשבילכם/i)).toBeInTheDocument();
   });
 });

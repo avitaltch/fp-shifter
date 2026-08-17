@@ -7,13 +7,29 @@
   margin-bottom: 2rem;
 }
 
+.dashboard-header h1 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(1.7rem, 3.5vw, 2.5rem);
+  letter-spacing: -0.04em;
+}
+
+.dashboard-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .date-display {
   font-size: 1.2rem;
   font-weight: 600;
-  color: var(--primary);
-  background: var(--secondary);
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  padding: 0.6rem 1rem;
+  border: 1px solid rgba(75, 79, 196, 0.13);
+  border-radius: 13px;
 }
 
 .stats-grid {
@@ -24,20 +40,58 @@
 }
 
 .stat-card {
-  background: var(--bg-surface);
+  --stat-color: var(--primary);
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #fff, var(--bg-surface));
+  border: 1px solid var(--border-light);
   padding: 1.5rem;
-  border-radius: 12px;
+  border-radius: 20px;
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 9px 26px rgba(48, 45, 76, 0.06);
+  animation: softPop 0.55s var(--stat-delay) var(--ease-out) both;
+  transition:
+    transform var(--motion-base) var(--ease-spring),
+    box-shadow var(--motion-base),
+    border-color var(--motion-base);
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  width: 75px;
+  height: 75px;
+  left: -26px;
+  bottom: -34px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--stat-color) 12%, transparent);
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--stat-color) 24%, var(--border-light));
+  box-shadow: 0 16px 36px rgba(48, 45, 76, 0.1);
+}
+
+.stat-card--coral {
+  --stat-color: var(--accent);
+}
+
+.stat-card--mint {
+  --stat-color: var(--mint);
+}
+
+.stat-card--amber {
+  --stat-color: var(--amber);
 }
 
 .stat-icon {
-  background: var(--secondary);
-  color: var(--primary);
+  background: color-mix(in srgb, var(--stat-color) 11%, white);
+  color: var(--stat-color);
   padding: 1rem;
-  border-radius: 50%;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -52,20 +106,41 @@
 .stat-number {
   font-size: 2rem;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--stat-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-section {
+  position: relative;
 }
 
 .timeline-section h2 {
   margin-bottom: 1.5rem;
   color: var(--text-primary);
+  font-size: clamp(1.3rem, 2.5vw, 1.7rem);
+  letter-spacing: -0.025em;
 }
 
 .appointment-card {
-  background: var(--bg-surface);
-  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #fff, var(--bg-surface));
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
   padding: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 9px 26px rgba(48, 45, 76, 0.06);
   margin-bottom: 1.5rem;
+  animation: softPop 0.55s calc(var(--appointment-index, 0) * 70ms) var(--ease-out) both;
+}
+
+.appointment-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(var(--primary), var(--accent));
 }
 
 .apt-header {
@@ -161,18 +236,18 @@
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .status-badge.confirmed {
-  background: #D1FAE5;
-  color: #065F46;
+  background: var(--mint-soft);
+  color: #0d6b58;
 }
 
 .timeline-chain {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.65rem;
   overflow-x: auto;
   padding-bottom: 1rem;
 }
@@ -181,18 +256,31 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  background: var(--bg-app);
+  background: linear-gradient(145deg, var(--bg-app), #fff);
+  border: 1px solid var(--border-light);
   padding: 1rem;
-  border-radius: 8px;
+  border-radius: 16px;
   min-width: 250px;
+  transition:
+    transform var(--motion-fast) var(--ease-spring),
+    border-color var(--motion-base),
+    box-shadow var(--motion-base);
+}
+
+.timeline-item:hover {
+  transform: translateY(-3px);
+  border-color: rgba(75, 79, 196, 0.25);
+  box-shadow: 0 10px 22px rgba(48, 45, 76, 0.08);
 }
 
 .time-block {
   font-weight: 600;
-  color: var(--primary);
-  background: var(--secondary);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+  padding: 0.35rem 0.55rem;
+  border-radius: 9px;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
 }
 
 .details-block {
@@ -206,14 +294,14 @@
 }
 
 .chain-arrow {
-  color: var(--text-secondary);
+  color: var(--accent);
   margin: 0 0.5rem;
   flex-shrink: 0;
+  animation: chainNudge 2.4s ease-in-out infinite;
 }
 
 .future-section {
   margin-top: 3rem;
-  opacity: 0.85;
 }
 
 .appointments-list.compact {
@@ -236,9 +324,15 @@
 .compact-details {
   font-size: 0.875rem;
   color: var(--text-secondary);
-  background: var(--bg-app);
+  background: var(--primary-soft);
   padding: 0.25rem 0.5rem;
   border-radius: 4px;
+}
+
+@keyframes chainNudge {
+  0%,
+  100% { transform: translateX(0); }
+  50% { transform: translateX(-4px); }
 }
 
 @media (max-width: 768px) {
@@ -321,6 +415,7 @@
     transform: rotate(-90deg);
     align-self: center;
     margin: 0;
+    animation: none;
   }
 
   .appointments-list.compact {

@@ -108,6 +108,18 @@ async function stubJson(page, urlGlob, body, { methods, status = 200, headers } 
   });
 }
 
+async function captureLanding(page) {
+  await page.goto(BASE, { waitUntil: 'networkidle' });
+  await page.getByRole('heading', { name: /ביקור אחד. כמה שירותים./ }).waitFor({
+    state: 'visible',
+  });
+  await page.waitForTimeout(500);
+  await page.screenshot({
+    path: path.join(outDir, '00-landing.png'),
+    fullPage: false,
+  });
+}
+
 async function captureBooking(page) {
   await stubJson(page, '**/rest/v1/service_types*', mockServices);
   await stubJson(page, '**/rest/v1/rpc/get_available_slots*', mockSlots);
@@ -289,6 +301,10 @@ async function main() {
 
   try {
     // Fresh page per capture so route stubs / auth seeds don't collide
+    const landingPage = await context.newPage();
+    await captureLanding(landingPage);
+    await landingPage.close();
+
     const bookingPage = await context.newPage();
     await captureBooking(bookingPage);
     await bookingPage.close();

@@ -1,19 +1,51 @@
-.success-icon {
-  color: var(--success);
-  margin-bottom: 1rem;
+.success-page .page-container {
+  background:
+    radial-gradient(circle at 50% 0, var(--mint-soft), transparent 19rem),
+    linear-gradient(145deg, #fff, var(--bg-surface));
 }
 
-.success-container h1 {
+.success-header {
+  position: relative;
+  text-align: center;
+}
+
+.success-icon {
+  box-sizing: content-box;
+  color: var(--success);
+  padding: 0.75rem;
+  border-radius: 50%;
+  background: var(--mint-soft);
+  box-shadow: 0 0 0 10px rgba(22, 137, 112, 0.08);
+  margin-bottom: 1rem;
+  animation: successArrival 0.7s var(--ease-spring) both;
+}
+
+.success-header h1 {
   color: var(--text-primary);
   margin-bottom: 0.5rem;
+  font-size: clamp(1.8rem, 5vw, 2.4rem);
+  letter-spacing: -0.035em;
 }
 
 .booking-details {
-  background: var(--bg-app);
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid var(--border-light);
   padding: 1.5rem;
-  border-radius: 8px;
+  border-radius: 18px;
   margin: 2rem 0;
   text-align: right;
+  box-shadow: 0 12px 28px rgba(48, 45, 76, 0.07);
+  animation: softPop 0.55s 0.2s var(--ease-out) both;
+}
+
+.booking-details::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--mint), var(--primary), var(--accent));
 }
 
 .booking-details p {
@@ -23,9 +55,23 @@
 .manage-link {
   display: inline-block;
   margin-top: 0.75rem;
-  color: var(--primary);
-  font-weight: 600;
+  color: var(--primary-strong);
+  font-weight: 700;
   text-decoration: underline;
+}
+
+@keyframes successArrival {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-14deg);
+  }
+  70% {
+    transform: scale(1.08) rotate(2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .manage-link:hover {

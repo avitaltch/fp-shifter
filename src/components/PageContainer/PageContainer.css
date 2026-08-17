@@ -1,5 +1,6 @@
 .page-wrapper {
-  padding: 2rem;
+  position: relative;
+  padding: clamp(1.25rem, 3vw, 2.75rem);
   padding-bottom: max(2rem, env(safe-area-inset-bottom));
   display: flex;
   justify-content: center;
@@ -9,11 +10,24 @@
 }
 
 .page-container {
-  background: var(--bg-surface);
-  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(255, 253, 249, 0.94));
+  border: 1px solid rgba(229, 224, 214, 0.92);
+  border-radius: var(--radius-lg);
   padding: 2.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-soft);
   width: 100%;
+}
+
+.page-container::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--accent), var(--mint));
+  opacity: 0.8;
 }
 
 /* Sizes */
@@ -37,7 +51,7 @@
 
   .page-container {
     padding: 1.25rem;
-    border-radius: 10px;
+    border-radius: 18px;
   }
 }
 
@@ -49,7 +63,7 @@
 
   .page-container {
     padding: 1rem;
-    border-radius: 0;
-    box-shadow: none;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(48, 45, 76, 0.07);
   }
 }
