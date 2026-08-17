@@ -43,4 +43,75 @@ describe('TenantDatabaseService', () => {
       module.get(TenantDatabaseService).query(scope, 'select id from services'),
     ).rejects.toThrow('Tenant queries must reference business_id through $1');
   });
+
+  it('commits tenant-scoped transaction work and releases the client', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'appointment-1' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const release = vi.fn();
+    const module = await Test.createTestingModule({
+      providers: [
+        TenantDatabaseService,
+        {
+          provide: DATABASE_POOL,
+          useValue: { connect: vi.fn().mockResolvedValue({ query, release }) },
+        },
+      ],
+    }).compile();
+
+    const result = await module
+      .get(TenantDatabaseService)
+      .transaction(scope, (transaction) =>
+        transaction.query(
+          'select id from appointments where business_id = $1 and id = $2',
+          ['appointment-1'],
+        ),
+      );
+
+    expect(result).toEqual([{ id: 'appointment-1' }]);
+    expect(query.mock.calls).toEqual([
+      ['begin'],
+      [
+        'select id from appointments where business_id = $1 and id = $2',
+        ['00000000-0000-4000-8000-000000000001', 'appointment-1'],
+      ],
+      ['commit'],
+    ]);
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('rolls back failed transaction work and releases the client', async () => {
+    const failure = new Error('write failed');
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce({ rows: [] });
+    const release = vi.fn();
+    const module = await Test.createTestingModule({
+      providers: [
+        TenantDatabaseService,
+        {
+          provide: DATABASE_POOL,
+          useValue: { connect: vi.fn().mockResolvedValue({ query, release }) },
+        },
+      ],
+    }).compile();
+
+    await expect(
+      module.get(TenantDatabaseService).transaction(scope, (transaction) =>
+        transaction.query(
+          'insert into appointments (business_id) values ($1)',
+        ),
+      ),
+    ).rejects.toBe(failure);
+    expect(query.mock.calls).toEqual([
+      ['begin'],
+      ['insert into appointments (business_id) values ($1)', [scope.businessId]],
+      ['rollback'],
+    ]);
+    expect(release).toHaveBeenCalledOnce();
+  });
 });

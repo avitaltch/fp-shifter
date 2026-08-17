@@ -173,6 +173,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R3 — Atomic booking and public booking vertical slice
 
 **Estimate:** 5–7 focused engineering days
+**Status:** In progress — atomic backend command and concurrency proof implemented; idempotency, management tokens, and frontend integration remain
 **Goal:** Let a customer find and commit a real compound appointment through NestJS/PostgreSQL.
 
 **Backend work**

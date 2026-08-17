@@ -39,4 +39,5 @@ No notification provider call, email rendering, or other network operation may r
 - A second active step overlapping the groomer fixture fails with `23P01`.
 - Adjacent steps ending and starting at the same instant are accepted.
 - Migration rollback removes the entire scheduling layer without altering foundation tenants/users.
-- R3 concurrency tests must prove that exactly one competing booking commits and no partial appointment remains.
+- The public booking command reloads services and scheduling state on one tenant-scoped transaction client.
+- A real PostgreSQL concurrency test proves that exactly one competing booking commits, the loser receives `PLAN_NO_LONGER_AVAILABLE`, and no partial appointment remains.

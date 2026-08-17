@@ -156,6 +156,76 @@ describe('AppModule with PostgreSQL', () => {
       });
   });
 
+  it('commits exactly one of two concurrent compound bookings with no partial loser', async () => {
+    const phoneE164 = '+972501230099';
+    const notes = `integration-concurrency-${Date.now()}`;
+    const bookingRequest = {
+      date: '2030-01-07',
+      startsAt: '2030-01-07T12:00:00.000Z',
+      serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+      customer: {
+        firstName: 'Concurrency',
+        lastName: 'Test',
+        email: 'concurrency@example.test',
+        phoneE164,
+      },
+      notes,
+    };
+
+    try {
+      const responses = await Promise.all([
+        request(app.getHttpServer())
+          .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+          .send(bookingRequest),
+        request(app.getHttpServer())
+          .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+          .send(bookingRequest),
+      ]);
+      expect(responses.map(({ status }) => status).sort()).toEqual([201, 409]);
+      const winner = responses.find(({ status }) => status === 201);
+      const loser = responses.find(({ status }) => status === 409);
+      expect(winner?.body).toMatchObject({
+        status: 'Confirmed',
+        startsAt: '2030-01-07T12:00:00.000Z',
+        endsAt: '2030-01-07T13:00:00.000Z',
+        totalPriceMinor: 20000,
+        currency: 'ILS',
+      });
+      expect(winner?.body.steps).toHaveLength(2);
+      expect(JSON.stringify(winner?.body)).not.toContain('providerUserId');
+      expect(loser?.body).toMatchObject({ code: 'PLAN_NO_LONGER_AVAILABLE' });
+
+      const persisted = await databaseClient.query<{
+        appointmentCount: number;
+        stepCount: number;
+      }>(
+        `select count(distinct a.id)::integer as "appointmentCount",
+                count(s.id)::integer as "stepCount"
+         from appointments a
+         left join appointment_steps s
+           on s.business_id = a.business_id
+          and s.appointment_id = a.id
+         where a.business_id = $1
+           and a.notes = $2`,
+        [HAPPY_PETS_BUSINESS_ID, notes],
+      );
+      expect(persisted.rows[0]).toEqual({ appointmentCount: 1, stepCount: 2 });
+    } finally {
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1
+           and notes = $2`,
+        [HAPPY_PETS_BUSINESS_ID, notes],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1
+           and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+    }
+  });
+
   it('returns no location-owned records when a location belongs to another tenant', async () => {
     const happyPetsScope = TenantScope.forBusiness(HAPPY_PETS_BUSINESS_ID);
     const rangeStart = new Date('2030-01-07T06:00:00.000Z');
