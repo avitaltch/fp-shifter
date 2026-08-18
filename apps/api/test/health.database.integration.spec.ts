@@ -9,6 +9,7 @@ import { configureApplication } from '../src/bootstrap';
 import { NotificationWorkerService } from '../src/notifications/notification-worker.service';
 import { NotificationWorkerRepository } from '../src/notifications/notification-worker.repository';
 import { SchedulingRepository } from '../src/scheduling/scheduling.repository';
+import { WaitlistRepository } from '../src/scheduling/waitlist.repository';
 import { TenantScope } from '../src/tenancy/tenant-scope';
 
 const HAPPY_PETS_BUSINESS_ID = '00000000-0000-4000-8000-000000000001';
@@ -26,6 +27,7 @@ describe('AppModule with PostgreSQL', () => {
   let schedulingRepository: SchedulingRepository;
   let notificationWorker: NotificationWorkerService;
   let notificationWorkerRepository: NotificationWorkerRepository;
+  let waitlistRepository: WaitlistRepository;
 
   beforeAll(async () => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -42,12 +44,19 @@ describe('AppModule with PostgreSQL', () => {
     schedulingRepository = app.get(SchedulingRepository);
     notificationWorker = app.get(NotificationWorkerService);
     notificationWorkerRepository = app.get(NotificationWorkerRepository);
+    waitlistRepository = app.get(WaitlistRepository);
 
     databaseClient = new Client({ connectionString: databaseUrl });
     await databaseClient.connect();
+    await databaseClient.query(
+      `delete from public_rate_limit_buckets where limiter like 'public-%'`,
+    );
   });
 
   afterAll(async () => {
+    await databaseClient?.query(
+      `delete from public_rate_limit_buckets where limiter like 'public-%'`,
+    );
     await databaseClient?.end();
     await app?.close();
   });
@@ -380,6 +389,365 @@ describe('AppModule with PostgreSQL', () => {
       .expect(({ body }) => {
         expect(body).toMatchObject({ code: 'INVALID_IDEMPOTENCY_KEY' });
       });
+  });
+
+  it('registers one tenant-scoped ordered waitlist demand and rejects duplicates', async () => {
+    const phoneE164 = '+972501230091';
+    const waitlistRequest = {
+      windowStartsAt: '2030-01-07T12:00:00.000Z',
+      windowEndsAt: '2030-01-07T15:00:00.000Z',
+      serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+      customer: {
+        firstName: 'Waitlist',
+        lastName: 'Customer',
+        email: 'waitlist@example.test',
+        phoneE164,
+      },
+    };
+
+    try {
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/waitlist')
+        .send(waitlistRequest)
+        .expect(201);
+      expect(created.body).toMatchObject({
+        status: 'Active',
+        windowStartsAt: waitlistRequest.windowStartsAt,
+        windowEndsAt: waitlistRequest.windowEndsAt,
+        serviceIds: waitlistRequest.serviceIds,
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/waitlist')
+        .send(waitlistRequest)
+        .expect(409)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'DUPLICATE_WAITLIST_ENTRY' });
+        });
+
+      const persisted = await databaseClient.query<{
+        status: string;
+        demandFingerprint: string;
+        serviceIds: string[];
+        eventKinds: string[];
+      }>(
+        `select e.status::text,
+                e.demand_fingerprint as "demandFingerprint",
+                (
+                  select array_agg(s.service_id order by s.sequence_number)
+                  from waitlist_entry_services s
+                  where s.business_id = e.business_id
+                    and s.waitlist_entry_id = e.id
+                ) as "serviceIds",
+                (
+                  select array_agg(v.kind::text order by v.created_at)
+                  from waitlist_events v
+                  where v.business_id = e.business_id
+                    and v.waitlist_entry_id = e.id
+                ) as "eventKinds"
+         from waitlist_entries e
+         where e.business_id = $1
+           and e.id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, created.body.waitlistEntryId],
+      );
+      expect(persisted.rows[0]).toMatchObject({
+        status: 'Active',
+        demandFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        serviceIds: waitlistRequest.serviceIds,
+        eventKinds: ['Registered'],
+      });
+      expect(persisted.rows[0]?.demandFingerprint).not.toContain(phoneE164);
+    } finally {
+      await databaseClient.query(
+        `delete from waitlist_entries
+         where business_id = $1
+           and customer_id in (
+             select id from customers
+             where business_id = $1 and phone_e164 = $2
+           )`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1 and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+    }
+  });
+
+  it('rejects cross-tenant services in public waitlist demand', async () => {
+    const phoneE164 = '+972501230090';
+    try {
+      await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/waitlist')
+        .send({
+          windowStartsAt: '2030-01-07T12:00:00.000Z',
+          windowEndsAt: '2030-01-07T15:00:00.000Z',
+          serviceIds: [BEAUTY_SERVICE_ID],
+          customer: {
+            firstName: 'Cross',
+            lastName: 'Tenant',
+            phoneE164,
+          },
+        })
+        .expect(400)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'INVALID_SERVICE_SELECTION' });
+        });
+      const entries = await databaseClient.query<{ count: number }>(
+        `select count(*)::integer as count
+         from waitlist_entries e
+         join customers c
+           on c.business_id = e.business_id and c.id = e.customer_id
+         where e.business_id = $1 and c.phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+      expect(entries.rows[0]?.count).toBe(0);
+    } finally {
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1 and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+    }
+  });
+
+  it('turns a cancellation into one sequential compound waitlist hold and offer', async () => {
+    const sourcePhone = '+972501230089';
+    const waitlistPhone = '+972501230088';
+    const secondWaitlistPhone = '+972501230087';
+    const sourceKey = randomUUID();
+    const holdAppointmentIds: string[] = [];
+
+    try {
+      const entry = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/waitlist')
+        .send({
+          windowStartsAt: '2030-01-07T13:00:00.000Z',
+          windowEndsAt: '2030-01-07T15:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+          customer: {
+            firstName: 'Backfill',
+            lastName: 'Candidate',
+            phoneE164: waitlistPhone,
+          },
+        })
+        .expect(201);
+      const secondEntry = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/waitlist')
+        .send({
+          windowStartsAt: '2030-01-07T13:00:00.000Z',
+          windowEndsAt: '2030-01-07T15:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+          customer: {
+            firstName: 'Second',
+            lastName: 'Candidate',
+            phoneE164: secondWaitlistPhone,
+          },
+        })
+        .expect(201);
+      await databaseClient.query(
+        `update waitlist_entries
+         set created_at = created_at - interval '1 second'
+         where business_id = $1 and id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, entry.body.waitlistEntryId],
+      );
+      const source = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', sourceKey)
+        .send({
+          date: '2030-01-07',
+          startsAt: '2030-01-07T14:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+          customer: {
+            firstName: 'Cancelling',
+            lastName: 'Customer',
+            phoneE164: sourcePhone,
+          },
+        })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/appointments/manage/cancel',
+        )
+        .set('Authorization', `Bearer ${source.body.managementToken}`)
+        .expect(200);
+      await expect(waitlistRepository.processNextMatch()).resolves.toBe(true);
+      await expect(waitlistRepository.processNextMatch()).resolves.toBe(false);
+
+      const offer = await databaseClient.query<{
+        offerId: string;
+        holdAppointmentId: string;
+        offerStatus: string;
+        entryStatus: string;
+        holdStatus: string;
+        stepCount: number;
+        notificationStatus: string;
+        actionPath: string;
+      }>(
+        `select o.id as "offerId",
+                o.hold_appointment_id as "holdAppointmentId",
+                o.status::text as "offerStatus",
+                e.status::text as "entryStatus",
+                a.status::text as "holdStatus",
+                count(s.id)::integer as "stepCount",
+                min(j.status::text) as "notificationStatus",
+                min(j.payload->>'actionPath') as "actionPath"
+         from waitlist_offers o
+         join waitlist_entries e
+           on e.business_id = o.business_id and e.id = o.waitlist_entry_id
+         join appointments a
+           on a.business_id = o.business_id and a.id = o.hold_appointment_id
+         join appointment_steps s
+           on s.business_id = a.business_id and s.appointment_id = a.id
+         join notification_jobs j
+           on j.business_id = o.business_id
+          and j.appointment_id = o.hold_appointment_id
+          and j.kind = 'WaitlistAvailability'
+         where o.business_id = $1 and o.waitlist_entry_id = $2
+         group by o.id, e.status, a.status`,
+        [HAPPY_PETS_BUSINESS_ID, entry.body.waitlistEntryId],
+      );
+      expect(offer.rows[0]).toMatchObject({
+        offerStatus: 'Active',
+        entryStatus: 'Offered',
+        holdStatus: 'Pending',
+        stepCount: 2,
+        notificationStatus: 'Pending',
+        actionPath: expect.stringMatching(
+          /^\/waitlist\/claim\/happy-pets-demo#token=wo_[A-Za-z0-9_-]{43}$/,
+        ),
+      });
+      if (offer.rows[0]?.holdAppointmentId) {
+        holdAppointmentIds.push(offer.rows[0].holdAppointmentId);
+      }
+      const actionPath = offer.rows[0]?.actionPath;
+      const offerToken = actionPath?.split('#token=')[1];
+      expect(offerToken).toMatch(/^wo_[A-Za-z0-9_-]{43}$/);
+
+      await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/waitlist/offers/reject',
+        )
+        .set('Authorization', `Bearer ${offerToken}`)
+        .expect(204);
+      await expect(waitlistRepository.processNextMatch()).resolves.toBe(true);
+
+      const secondOffer = await databaseClient.query<{
+        offerId: string;
+        holdAppointmentId: string;
+        actionPath: string;
+      }>(
+        `select o.id as "offerId",
+                o.hold_appointment_id as "holdAppointmentId",
+                j.payload->>'actionPath' as "actionPath"
+         from waitlist_offers o
+         join notification_jobs j
+           on j.business_id = o.business_id
+          and j.appointment_id = o.hold_appointment_id
+          and j.kind = 'WaitlistAvailability'
+         where o.business_id = $1
+           and o.waitlist_entry_id = $2
+           and o.status = 'Active'`,
+        [HAPPY_PETS_BUSINESS_ID, secondEntry.body.waitlistEntryId],
+      );
+      expect(secondOffer.rows).toHaveLength(1);
+      holdAppointmentIds.push(secondOffer.rows[0]!.holdAppointmentId);
+      const secondOfferToken = secondOffer.rows[0]!.actionPath.split(
+        '#token=',
+      )[1];
+
+      const accepted = await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/waitlist/offers/accept',
+        )
+        .set('Authorization', `Bearer ${secondOfferToken}`)
+        .expect(200);
+      expect(accepted.body).toMatchObject({
+        appointmentId: secondOffer.rows[0]!.holdAppointmentId,
+        status: 'Confirmed',
+        totalPriceMinor: 20_000,
+        currency: 'ILS',
+        managementToken: expect.stringMatching(/^sm_[A-Za-z0-9_-]{43}$/),
+      });
+      expect(accepted.body.steps).toHaveLength(2);
+      expect(JSON.stringify(accepted.body)).not.toContain('providerUserId');
+
+      await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/waitlist/offers/accept',
+        )
+        .set('Authorization', `Bearer ${secondOfferToken}`)
+        .expect(404);
+
+      const fulfilled = await databaseClient.query<{
+        offerStatus: string;
+        entryStatus: string;
+        appointmentStatus: string;
+        recoveredRevenueMinor: number;
+        acceptedNotificationCount: number;
+      }>(
+        `select o.status::text as "offerStatus",
+                e.status::text as "entryStatus",
+                a.status::text as "appointmentStatus",
+                (v.metadata->>'recoveredRevenueMinor')::integer as "recoveredRevenueMinor",
+                (
+                  select count(*)::integer
+                  from notification_jobs j
+                  where j.business_id = o.business_id
+                    and j.appointment_id = o.hold_appointment_id
+                    and j.kind = 'WaitlistAccepted'
+                ) as "acceptedNotificationCount"
+         from waitlist_offers o
+         join waitlist_entries e
+           on e.business_id = o.business_id and e.id = o.waitlist_entry_id
+         join appointments a
+           on a.business_id = o.business_id and a.id = o.hold_appointment_id
+         join waitlist_events v
+           on v.business_id = o.business_id
+          and v.waitlist_offer_id = o.id
+          and v.kind = 'Accepted'
+         where o.business_id = $1 and o.id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, secondOffer.rows[0]?.offerId],
+      );
+      expect(fulfilled.rows[0]).toEqual({
+        offerStatus: 'Accepted',
+        entryStatus: 'Fulfilled',
+        appointmentStatus: 'Confirmed',
+        recoveredRevenueMinor: 20_000,
+        acceptedNotificationCount: 1,
+      });
+    } finally {
+      for (const holdAppointmentId of holdAppointmentIds) {
+        await databaseClient.query(
+          `delete from appointments where business_id = $1 and id = $2`,
+          [HAPPY_PETS_BUSINESS_ID, holdAppointmentId],
+        );
+      }
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1 and idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, sourceKey],
+      );
+      await databaseClient.query(
+        `delete from waitlist_entries e
+         where e.business_id = $1
+           and e.customer_id in (
+             select id from customers
+             where business_id = $1 and phone_e164 = any($2::text[])
+           )`,
+        [HAPPY_PETS_BUSINESS_ID, [waitlistPhone, secondWaitlistPhone]],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1 and phone_e164 = any($2::text[])`,
+        [
+          HAPPY_PETS_BUSINESS_ID,
+          [sourcePhone, waitlistPhone, secondWaitlistPhone],
+        ],
+      );
+    }
   });
 
   it('rate limits repeated public booking attempts without storing contact data', async () => {

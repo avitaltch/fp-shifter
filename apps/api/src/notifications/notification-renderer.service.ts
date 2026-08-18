@@ -46,7 +46,7 @@ export class NotificationRendererService {
       case 'WaitlistAvailability':
         return {
           subject: 'התפנה זמן לתור שביקשת',
-          body: `${greeting} התפנה זמן ל-${serviceNames} ב-${visitTime}.`,
+          body: `${greeting} התפנה זמן ל-${serviceNames} ב-${visitTime}.${job.payload.actionPath ? ` לאישור: ${job.payload.actionPath}` : ''}`,
         };
       case 'WaitlistAccepted':
         return {

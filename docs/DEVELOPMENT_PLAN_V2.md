@@ -291,6 +291,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R7 — Waitlist and cancellation backfill
 
 **Estimate:** 5–8 focused engineering days
+**Status:** In progress — registration, durable cancellation matching, sequential compound holds, short-lived offer capabilities, atomic acceptance, rejection/expiry transitions, notification intent, and recovered-revenue audit are implemented; final expiry/second-candidate integration proof and frontend claim flow remain
 **Goal:** Fill newly available time without overselling it.
 
 **Work**
@@ -308,6 +309,14 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - A cancellation can generate an offer for a compatible multi-service request.
 - Only one customer can claim the released capacity.
 - Expired offers cannot create bookings.
+
+**Implemented checkpoint**
+
+- Public registration validates future bounded windows, ordered services, tenant ownership, duplicate active demand, and durable abuse quotas.
+- Cancellation creates durable match work; the worker ranks by entry creation time and creates only one active offer per released appointment.
+- Pending appointments and scheduled steps act as five-minute provider holds under the existing exclusion constraint, without another queue or cache service.
+- Offer and management capabilities are purpose-scoped, hashed at rest, carried in URL fragments for browser handoff, and never exposed in API paths or queries.
+- Acceptance is single-effect and transactional; the appointment, entry, offer, notification/reminder intent, and recovered-revenue event commit together.
 
 ## Later: connect real delivery and prepare a pilot
 

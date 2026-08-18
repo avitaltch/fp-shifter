@@ -13,7 +13,7 @@ import {
 import { BookingRepository } from './booking.repository';
 import { ManagementTokenService } from './management-token.service';
 import { PublicBookingService } from './public-booking.service';
-import { PublicBookingRateLimiter } from './public-booking-rate-limiter.service';
+import { PublicActionRateLimiter } from './public-booking-rate-limiter.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
 
 const request = {
@@ -88,7 +88,7 @@ describe('PublicBookingService', () => {
         { provide: PublicSchedulingRepository, useValue: directory },
         { provide: BookingRepository, useValue: bookings },
         { provide: ManagementTokenService, useValue: managementTokens },
-        { provide: PublicBookingRateLimiter, useValue: rateLimiter },
+        { provide: PublicActionRateLimiter, useValue: rateLimiter },
       ],
     }).compile();
     service = module.get(PublicBookingService);

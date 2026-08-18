@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -17,7 +17,6 @@ export interface NotificationWorkerRunResult {
 
 @Injectable()
 export class NotificationWorkerService {
-  private readonly logger = new Logger(NotificationWorkerService.name);
   private readonly workerId = `${hostname()}:${process.pid}:${randomUUID()}`;
 
   constructor(
@@ -78,36 +77,4 @@ export class NotificationWorkerService {
     return result;
   }
 
-  async runForever(signal: AbortSignal): Promise<void> {
-    const pollMs = this.config.get('NOTIFICATION_WORKER_POLL_MS', {
-      infer: true,
-    });
-    this.logger.log({ event: 'notification_worker_started', workerId: this.workerId });
-    while (!signal.aborted) {
-      const result = await this.runOnce();
-      if (result.claimed > 0) {
-        this.logger.log({ event: 'notification_worker_batch', ...result });
-      }
-      if (!signal.aborted && result.claimed === 0) {
-        await waitForNextPoll(pollMs, signal);
-      }
-    }
-    this.logger.log({ event: 'notification_worker_stopped', workerId: this.workerId });
-  }
-}
-
-function waitForNextPoll(milliseconds: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const onAbort = () => {
-      clearTimeout(timeout);
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    };
-    const timeout = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, milliseconds);
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
-  });
 }

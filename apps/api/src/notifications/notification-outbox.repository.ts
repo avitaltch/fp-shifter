@@ -47,6 +47,24 @@ export interface BookingNotificationInput {
   customerEmail?: string;
   customerPhoneE164: string;
   steps: readonly NotificationAppointmentStepInput[];
+  confirmationKind?: 'BookingConfirmation' | 'WaitlistAccepted';
+}
+
+export interface WaitlistOfferNotificationInput {
+  offerId: string;
+  holdAppointmentId: string;
+  startsAt: Date;
+  endsAt: Date;
+  expiresAt: Date;
+  businessName: string;
+  businessSlug: string;
+  timezone: string;
+  customerFirstName: string;
+  customerEmail?: string;
+  customerPhoneE164: string;
+  offerToken: string;
+  offeredAt: Date;
+  steps: readonly Omit<NotificationAppointmentStepInput, 'providerUserId'>[];
 }
 
 export interface CancellationNotificationInput {
@@ -87,7 +105,7 @@ export class NotificationOutboxRepository {
       await this.enqueue(
         transaction,
         input.appointmentId,
-        'BookingConfirmation',
+        input.confirmationKind ?? 'BookingConfirmation',
         target,
         input.appointmentCreatedAt,
         customerPayload,
@@ -131,6 +149,33 @@ export class NotificationOutboxRepository {
       input.appointmentCreatedAt,
       managerPayload,
       manager.userId,
+    );
+  }
+
+  async enqueueWaitlistOffer(
+    transaction: TenantTransaction,
+    input: WaitlistOfferNotificationInput,
+  ): Promise<void> {
+    const policy = await this.getPolicy(transaction);
+    const target = customerTarget(
+      policy,
+      input.customerEmail,
+      input.customerPhoneE164,
+    );
+    if (!target) return;
+    const payload: NotificationPayload = {
+      ...payloadFor(input, input.steps),
+      actionPath: `/waitlist/claim/${input.businessSlug}#token=${encodeURIComponent(input.offerToken)}`,
+      offerExpiresAt: input.expiresAt.toISOString(),
+    };
+    await this.enqueue(
+      transaction,
+      input.holdAppointmentId,
+      'WaitlistAvailability',
+      target,
+      input.offeredAt,
+      payload,
+      `waitlist:${input.offerId}`,
     );
   }
 

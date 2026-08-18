@@ -11,6 +11,7 @@ export interface ApplicationEnvironment {
   PUBLIC_BOOKING_IP_WINDOW_SECONDS: number;
   PUBLIC_BOOKING_CONTACT_LIMIT: number;
   PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS: number;
+  WAITLIST_OFFER_TTL_SECONDS: number;
   NOTIFICATION_WORKER_BATCH_SIZE: number;
   NOTIFICATION_WORKER_LEASE_SECONDS: number;
   NOTIFICATION_WORKER_POLL_MS: number;
@@ -138,6 +139,13 @@ export function validateEnvironment(
       'PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS',
       1,
       86_400,
+    ),
+    WAITLIST_OFFER_TTL_SECONDS: parseInteger(
+      environment.WAITLIST_OFFER_TTL_SECONDS,
+      300,
+      'WAITLIST_OFFER_TTL_SECONDS',
+      60,
+      3_600,
     ),
     NOTIFICATION_WORKER_BATCH_SIZE: parseInteger(
       environment.NOTIFICATION_WORKER_BATCH_SIZE,

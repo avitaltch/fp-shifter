@@ -26,6 +26,8 @@ export interface NotificationPayload {
   appointmentStartsAt: string;
   appointmentEndsAt: string;
   timezone: string;
+  actionPath?: string;
+  offerExpiresAt?: string;
   services: readonly {
     sequenceNumber: number;
     serviceName: string;

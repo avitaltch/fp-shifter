@@ -24,6 +24,7 @@ No critical findings were identified. The two high-risk findings from the baseli
 - Tenant-owned scheduling and management queries apply business predicates and composite tenant foreign keys.
 - Request logging excludes query strings and authorization headers.
 - Appointment-management tokens are stored as hashes, expire, and can be revoked.
+- Waitlist offer capabilities are purpose-separated, hashed, single-effect, and expire after five minutes by default.
 - PostgreSQL exclusion constraints remain the final double-booking authority.
 
 ## Verification required at every checkpoint

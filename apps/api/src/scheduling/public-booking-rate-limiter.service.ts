@@ -18,7 +18,7 @@ interface RateLimitRule {
 }
 
 @Injectable()
-export class PublicBookingRateLimiter {
+export class PublicActionRateLimiter {
   private readonly secret: string;
 
   constructor(
@@ -29,13 +29,14 @@ export class PublicBookingRateLimiter {
   }
 
   async assertAllowed(input: {
+    action: 'public-booking' | 'public-waitlist';
     businessSlug: string;
     clientAddress: string;
     phoneE164: string;
   }): Promise<void> {
     const rules: RateLimitRule[] = [
       {
-        limiter: 'public-booking-business-ip',
+        limiter: `${input.action}-business-ip`,
         identity: `${input.businessSlug}:${input.clientAddress}`,
         limit: this.config.get('PUBLIC_BOOKING_IP_LIMIT', { infer: true }),
         windowSeconds: this.config.get('PUBLIC_BOOKING_IP_WINDOW_SECONDS', {
@@ -43,7 +44,7 @@ export class PublicBookingRateLimiter {
         }),
       },
       {
-        limiter: 'public-booking-business-contact',
+        limiter: `${input.action}-business-contact`,
         identity: `${input.businessSlug}:${input.phoneE164}`,
         limit: this.config.get('PUBLIC_BOOKING_CONTACT_LIMIT', { infer: true }),
         windowSeconds: this.config.get(

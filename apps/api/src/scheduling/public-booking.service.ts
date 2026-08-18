@@ -17,7 +17,7 @@ import { BookingRepository } from './booking.repository';
 import type { CreatePublicBookingDto } from './dto/create-public-booking.dto';
 import type { PublicBookingResponseDto } from './dto/public-booking-response.dto';
 import { ManagementTokenService } from './management-token.service';
-import { PublicBookingRateLimiter } from './public-booking-rate-limiter.service';
+import { PublicActionRateLimiter } from './public-booking-rate-limiter.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
 
 @Injectable()
@@ -26,7 +26,7 @@ export class PublicBookingService {
     private readonly directory: PublicSchedulingRepository,
     private readonly bookings: BookingRepository,
     private readonly managementTokens: ManagementTokenService,
-    private readonly rateLimiter: PublicBookingRateLimiter,
+    private readonly rateLimiter: PublicActionRateLimiter,
   ) {}
 
   async create(
@@ -49,6 +49,7 @@ export class PublicBookingService {
       });
     }
     await this.rateLimiter.assertAllowed({
+      action: 'public-booking',
       businessSlug: context.businessSlug,
       clientAddress,
       phoneE164: request.customer.phoneE164,

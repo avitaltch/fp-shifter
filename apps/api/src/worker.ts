@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { ConsoleLogger, Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { NotificationWorkerService } from './notifications/notification-worker.service';
+import { BackgroundWorkerService } from './background-worker.service';
 import { WorkerModule } from './worker.module';
 
 async function bootstrap(): Promise<void> {
@@ -14,7 +14,7 @@ async function bootstrap(): Promise<void> {
   process.once('SIGTERM', stop);
   try {
     await application
-      .get(NotificationWorkerService)
+      .get(BackgroundWorkerService)
       .runForever(abortController.signal);
   } finally {
     process.off('SIGINT', stop);

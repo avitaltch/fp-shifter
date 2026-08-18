@@ -16,11 +16,8 @@ import {
   InvalidServiceSelectionError,
   PlanNoLongerAvailableError,
 } from './booking.errors';
-import type {
-  BookingCustomerInput,
-  CreateBookingCommand,
-  CreatedBooking,
-} from './booking.types';
+import type { CreateBookingCommand, CreatedBooking } from './booking.types';
+import { CustomerRepository } from './customer.repository';
 import type {
   ActiveAppointmentStepRecord,
   BusinessHoursRecord,
@@ -29,13 +26,6 @@ import type {
   PublicBusinessSchedulingContext,
   ServiceRecord,
 } from './scheduling.types';
-
-interface CustomerRow {
-  id: string;
-  firstName: string;
-  email: string | null;
-  phoneE164: string;
-}
 
 interface AppointmentRow {
   id: string;
@@ -64,6 +54,7 @@ export class BookingRepository {
   constructor(
     private readonly database: TenantDatabaseService,
     private readonly notifications: NotificationOutboxRepository,
+    private readonly customers: CustomerRepository,
   ) {}
 
   async create(
@@ -212,7 +203,7 @@ export class BookingRepository {
       throw new PlanNoLongerAvailableError('Selected plan is no longer available');
     }
 
-    const customer = await this.findOrCreateCustomer(
+    const customer = await this.customers.findOrCreate(
       transaction,
       command.customer,
     );
@@ -313,44 +304,6 @@ export class BookingRepository {
         endsAt: step.endsAt,
       })),
     };
-  }
-
-  private async findOrCreateCustomer(
-    transaction: TenantTransaction,
-    customer: BookingCustomerInput,
-  ): Promise<CustomerRow> {
-    const inserted = await transaction.query<CustomerRow>(
-      `insert into customers
-         (business_id, first_name, last_name, email, phone_e164)
-       values ($1, $2, $3, $4, $5)
-       on conflict (business_id, phone_e164) where deleted_at is null
-       do nothing
-       returning id,
-                 first_name as "firstName",
-                 email::text as email,
-                 phone_e164 as "phoneE164"`,
-      [
-        customer.firstName,
-        customer.lastName,
-        customer.email ?? null,
-        customer.phoneE164,
-      ],
-    );
-    if (inserted[0]) return inserted[0];
-
-    const existing = await transaction.query<CustomerRow>(
-      `select id,
-              first_name as "firstName",
-              email::text as email,
-              phone_e164 as "phoneE164"
-       from customers
-       where business_id = $1
-         and phone_e164 = $2
-         and deleted_at is null`,
-      [customer.phoneE164],
-    );
-    if (!existing[0]) throw new Error('Customer lookup did not return a customer');
-    return existing[0];
   }
 
   private async findIdempotentBooking(

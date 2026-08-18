@@ -14,8 +14,7 @@ import {
 import type { PublicManagedAppointmentResponseDto } from './dto/public-managed-appointment-response.dto';
 import { ManagementTokenService } from './management-token.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
-
-const MANAGEMENT_TOKEN_PATTERN = /^sm_[A-Za-z0-9_-]{43}$/;
+import { readBearerCapability } from './capability-token';
 
 @Injectable()
 export class PublicAppointmentManagementService {
@@ -80,7 +79,7 @@ export class PublicAppointmentManagementService {
     timezone: string;
     businessName: string;
   }> {
-    const token = readBearerToken(authorization);
+    const token = readBearerCapability(authorization, 'sm');
     if (!token) throw appointmentNotFound();
     const context = await this.directory.findBusinessBySlug(businessSlug);
     if (!context) throw appointmentNotFound();
@@ -91,12 +90,6 @@ export class PublicAppointmentManagementService {
       businessName: context.businessName,
     };
   }
-}
-
-function readBearerToken(authorization: string | undefined): string | null {
-  if (!authorization?.startsWith('Bearer ')) return null;
-  const token = authorization.slice('Bearer '.length);
-  return MANAGEMENT_TOKEN_PATTERN.test(token) ? token : null;
 }
 
 function appointmentNotFound(): NotFoundException {

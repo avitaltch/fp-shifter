@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseService } from '../database/database.service';
-import { PublicBookingRateLimiter } from './public-booking-rate-limiter.service';
+import { PublicActionRateLimiter } from './public-booking-rate-limiter.service';
 
 const settings: Record<string, string | number> = {
   MANAGEMENT_TOKEN_SECRET: 'test-management-token-secret-at-least-32-bytes',
@@ -13,8 +13,8 @@ const settings: Record<string, string | number> = {
   PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS: 3_600,
 };
 
-describe('PublicBookingRateLimiter', () => {
-  let limiter: PublicBookingRateLimiter;
+describe('PublicActionRateLimiter', () => {
+  let limiter: PublicActionRateLimiter;
   let database: { query: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
@@ -34,7 +34,7 @@ describe('PublicBookingRateLimiter', () => {
     };
     const module = await Test.createTestingModule({
       providers: [
-        PublicBookingRateLimiter,
+        PublicActionRateLimiter,
         { provide: DatabaseService, useValue: database },
         {
           provide: ConfigService,
@@ -42,11 +42,12 @@ describe('PublicBookingRateLimiter', () => {
         },
       ],
     }).compile();
-    limiter = module.get(PublicBookingRateLimiter);
+    limiter = module.get(PublicActionRateLimiter);
   });
 
   it('stores only keyed hashes for the IP and phone identities', async () => {
     await limiter.assertAllowed({
+      action: 'public-booking',
       businessSlug: 'happy-pets-demo',
       clientAddress: '203.0.113.10',
       phoneE164: '+972501234567',
@@ -77,6 +78,7 @@ describe('PublicBookingRateLimiter', () => {
 
     await expect(
       limiter.assertAllowed({
+        action: 'public-booking',
         businessSlug: 'happy-pets-demo',
         clientAddress: '203.0.113.10',
         phoneE164: '+972501234567',

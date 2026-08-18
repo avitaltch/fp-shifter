@@ -15,9 +15,11 @@ import type {
   ManagedAppointmentStatus,
   ManagedAppointmentStep,
 } from './appointment-management.types';
+import { WaitlistRepository } from './waitlist.repository';
 
 interface ManagedAppointmentRow {
   appointmentId: string;
+  locationId: string;
   status: ManagedAppointmentStatus;
   startsAt: Date;
   endsAt: Date;
@@ -38,6 +40,7 @@ export class AppointmentManagementRepository {
   constructor(
     private readonly database: TenantDatabaseService,
     private readonly notifications: NotificationOutboxRepository,
+    private readonly waitlist: WaitlistRepository,
   ) {}
 
   async find(
@@ -121,6 +124,12 @@ export class AppointmentManagementRepository {
           endsAt: step.endsAt,
         })),
       });
+      await this.waitlist.enqueueMatchRequest(
+        transaction,
+        appointment.locationId,
+        appointment.appointmentId,
+        now,
+      );
       return cancelledAppointment;
     });
   }
@@ -132,6 +141,7 @@ export class AppointmentManagementRepository {
   ): Promise<ManagedAppointmentRow | null> {
     const rows = await transaction.query<ManagedAppointmentRow>(
       `select a.id as "appointmentId",
+              a.location_id as "locationId",
               a.status,
               a.starts_at as "startsAt",
               a.ends_at as "endsAt",

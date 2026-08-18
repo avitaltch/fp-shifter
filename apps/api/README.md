@@ -76,6 +76,26 @@ Only a SHA-256 hash is stored in PostgreSQL. Tokens are scoped to the business,
 expire according to `MANAGEMENT_TOKEN_TTL_DAYS`, can be revoked, and return the
 same generic not-found response when invalid to avoid leaking appointments.
 
+Register ordered demand when no suitable compound slot is available, then use
+the short-lived offer capability sent by the local notification adapter:
+
+```http
+POST /api/v1/public/businesses/:businessSlug/waitlist
+Content-Type: application/json
+
+{"windowStartsAt":"2030-01-07T07:00:00.000Z","windowEndsAt":"2030-01-07T15:00:00.000Z","serviceIds":["service-uuid-1","service-uuid-2"],"customer":{"firstName":"Ari","lastName":"Cohen","phoneE164":"+972501234567"}}
+
+POST /api/v1/public/businesses/:businessSlug/waitlist/offers/accept
+Authorization: Bearer wo_...
+
+POST /api/v1/public/businesses/:businessSlug/waitlist/offers/reject
+Authorization: Bearer wo_...
+```
+
+Cancellation enqueues durable matcher work. The background worker ranks exact
+ordered-service matches by registration time, creates one PostgreSQL-enforced
+compound hold, and advances after rejection or five-minute expiry.
+
 ## Local container stack
 
 The replacement stack uses a separate Compose file so the existing self-hosted Supabase path remains available during development.
