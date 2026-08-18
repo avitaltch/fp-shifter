@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useParams } from 'react-router-dom';
 import {
   listServices,
@@ -10,6 +10,7 @@ import {
 } from '../lib/api';
 import { friendlyError } from '../lib/errors';
 import { toIsraeliE164 } from '../lib/phone';
+import { idempotencyAttempt } from '../lib/idempotency';
 import { Check, Clock, Calendar as CalendarIcon, User, Scissors, Sparkles } from 'lucide-react';
 import { jerusalemTodayString, jerusalemAddDaysString, toTimeDisplay, formatDuration, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
@@ -39,6 +40,7 @@ const CustomerBookingPage = () => {
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const bookingAttemptRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -147,23 +149,35 @@ const CustomerBookingPage = () => {
 
     setIsSubmitting(true);
     try {
-      const booking = businessSlug
-        ? await submitPublicBooking(businessSlug, {
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            phoneE164,
-            visitDate: selectedDate,
-            startsAt: selectedTime,
-            serviceIds: selectedServices,
-          })
-        : await bookAppointment({
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            phone: phone.trim(),
-            visitDate: selectedDate,
-            startTime: selectedTime,
-            serviceIds: selectedServices,
-          });
+      let booking;
+      if (businessSlug) {
+        const publicBookingRequest = {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phoneE164,
+          visitDate: selectedDate,
+          startsAt: selectedTime,
+          serviceIds: selectedServices,
+        };
+        bookingAttemptRef.current = idempotencyAttempt(
+          bookingAttemptRef.current,
+          publicBookingRequest
+        );
+        booking = await submitPublicBooking(
+          businessSlug,
+          publicBookingRequest,
+          { idempotencyKey: bookingAttemptRef.current.idempotencyKey }
+        );
+      } else {
+        booking = await bookAppointment({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phone.trim(),
+          visitDate: selectedDate,
+          startTime: selectedTime,
+          serviceIds: selectedServices,
+        });
+      }
 
       const confirmation = {
         booking,

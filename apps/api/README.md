@@ -48,13 +48,16 @@ Commit a selected plan as one PostgreSQL transaction:
 ```http
 POST /api/v1/public/businesses/:businessSlug/bookings
 Content-Type: application/json
+Idempotency-Key: 01943f67-6ec3-4e0f-8a69-2df69f48f113
 
 {"date":"2030-01-07","startsAt":"2030-01-07T12:00:00.000Z","serviceIds":["service-uuid-1","service-uuid-2"],"customer":{"firstName":"Ari","lastName":"Cohen","phoneE164":"+972501234567"}}
 ```
 
 The command reloads server-owned services and scheduling state. Provider exclusion
 conflicts return HTTP `409` with code `PLAN_NO_LONGER_AVAILABLE`; failed commands
-leave no partial appointment or steps.
+leave no partial appointment or steps. Retry an uncertain request with the same
+UUID v4 idempotency key and unchanged body to receive the original booking.
+Reusing a key with different input returns `IDEMPOTENCY_KEY_REUSED`.
 
 ## Local container stack
 
@@ -120,6 +123,7 @@ Implemented:
 - tenant-scoped scheduling candidate repository;
 - deterministic ordered multi-provider scheduler and public availability endpoint;
 - atomic compound booking command with PostgreSQL concurrency protection;
+- tenant-scoped booking idempotency with concurrent replay protection;
 - unit/controller/HTTP endpoint tests;
 - real AppModule/PostgreSQL readiness and seed integration coverage;
 - CI migration rollback and reapply validation.
@@ -129,5 +133,5 @@ Not implemented yet:
 - authentication endpoints;
 - tenant guards;
 - configuration endpoints for services, provider skills and availability;
-- booking idempotency and secure customer-management tokens;
+- secure customer-management tokens;
 - notification worker and waitlist.

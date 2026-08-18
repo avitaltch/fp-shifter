@@ -6,6 +6,8 @@ export interface BookingCustomerInput {
 }
 
 export interface CreateBookingCommand {
+  idempotencyKey: string;
+  requestFingerprint: string;
   date: string;
   startsAt: Date;
   serviceIds: readonly string[];

@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -212,6 +213,8 @@ describe('AppModule with PostgreSQL', () => {
   it('commits exactly one of two concurrent compound bookings with no partial loser', async () => {
     const phoneE164 = '+972501230099';
     const notes = `integration-concurrency-${Date.now()}`;
+    const firstIdempotencyKey = randomUUID();
+    const secondIdempotencyKey = randomUUID();
     const bookingRequest = {
       date: '2030-01-07',
       startsAt: '2030-01-07T12:00:00.000Z',
@@ -229,9 +232,11 @@ describe('AppModule with PostgreSQL', () => {
       const responses = await Promise.all([
         request(app.getHttpServer())
           .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+          .set('Idempotency-Key', firstIdempotencyKey)
           .send(bookingRequest),
         request(app.getHttpServer())
           .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+          .set('Idempotency-Key', secondIdempotencyKey)
           .send(bookingRequest),
       ]);
       expect(responses.map(({ status }) => status).sort()).toEqual([201, 409]);
@@ -277,6 +282,95 @@ describe('AppModule with PostgreSQL', () => {
         [HAPPY_PETS_BUSINESS_ID, phoneE164],
       );
     }
+  });
+
+  it('replays concurrent retries with one tenant-scoped idempotency key', async () => {
+    const phoneE164 = '+972501230098';
+    const notes = `integration-idempotency-${Date.now()}`;
+    const idempotencyKey = randomUUID();
+    const bookingRequest = {
+      date: '2030-01-07',
+      startsAt: '2030-01-07T13:30:00.000Z',
+      serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+      customer: {
+        firstName: 'Idempotency',
+        lastName: 'Test',
+        phoneE164,
+      },
+      notes,
+    };
+
+    try {
+      const responses = await Promise.all([
+        request(app.getHttpServer())
+          .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+          .set('Idempotency-Key', idempotencyKey)
+          .send(bookingRequest),
+        request(app.getHttpServer())
+          .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+          .set('Idempotency-Key', idempotencyKey)
+          .send(bookingRequest),
+      ]);
+      expect(responses.map(({ status }) => status)).toEqual([201, 201]);
+      expect(responses[0]?.body).toEqual(responses[1]?.body);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({ ...bookingRequest, notes: `${notes}-different` })
+        .expect(409)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
+        });
+
+      const persisted = await databaseClient.query<{
+        appointmentCount: number;
+        stepCount: number;
+      }>(
+        `select count(distinct a.id)::integer as "appointmentCount",
+                count(s.id)::integer as "stepCount"
+         from appointments a
+         left join appointment_steps s
+           on s.business_id = a.business_id
+          and s.appointment_id = a.id
+         where a.business_id = $1
+           and a.idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, idempotencyKey],
+      );
+      expect(persisted.rows[0]).toEqual({ appointmentCount: 1, stepCount: 2 });
+    } finally {
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1
+           and idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, idempotencyKey],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1
+           and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+    }
+  });
+
+  it('requires a UUID v4 idempotency key for public booking mutations', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+      .send({
+        date: '2030-01-07',
+        startsAt: '2030-01-07T13:30:00.000Z',
+        serviceIds: [PET_TRIM_SERVICE_ID],
+        customer: {
+          firstName: 'Missing',
+          lastName: 'Key',
+          phoneE164: '+972501230097',
+        },
+      })
+      .expect(400)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 'INVALID_IDEMPOTENCY_KEY' });
+      });
   });
 
   it('returns no location-owned records when a location belongs to another tenant', async () => {

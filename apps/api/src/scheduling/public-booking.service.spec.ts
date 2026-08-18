@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  IdempotencyKeyReusedError,
   InvalidBookingDateError,
   PlanNoLongerAvailableError,
 } from './booking.errors';
@@ -26,6 +28,7 @@ const request = {
     phoneE164: '+972501234567',
   },
 };
+const idempotencyKey = '00000000-0000-4000-8000-000000000444';
 
 describe('PublicBookingService', () => {
   let service: PublicBookingService;
@@ -76,7 +79,11 @@ describe('PublicBookingService', () => {
   });
 
   it('returns the confirmed compound visit without provider identifiers', async () => {
-    const response = await service.create('happy-pets-demo', request);
+    const response = await service.create(
+      'happy-pets-demo',
+      request,
+      idempotencyKey,
+    );
 
     expect(response).toMatchObject({
       appointmentId: '00000000-0000-4000-8000-000000000999',
@@ -94,6 +101,8 @@ describe('PublicBookingService', () => {
       }),
       expect.objectContaining({ locationId: expect.any(String) }),
       expect.objectContaining({
+        idempotencyKey,
+        requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
         startsAt: new Date(request.startsAt),
         serviceIds: request.serviceIds,
       }),
@@ -103,9 +112,19 @@ describe('PublicBookingService', () => {
   it('returns not found without starting a booking transaction', async () => {
     directory.findBusinessBySlug.mockResolvedValue(null);
 
-    await expect(service.create('missing', request)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.create('missing', request, idempotencyKey),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(bookings.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing or malformed idempotency key before database access', async () => {
+    await expect(
+      service.create('happy-pets-demo', request, undefined),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'INVALID_IDEMPOTENCY_KEY' }),
+    });
+    expect(directory.findBusinessBySlug).not.toHaveBeenCalled();
     expect(bookings.create).not.toHaveBeenCalled();
   });
 
@@ -115,7 +134,7 @@ describe('PublicBookingService', () => {
     );
 
     await expect(
-      service.create('happy-pets-demo', request),
+      service.create('happy-pets-demo', request, idempotencyKey),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -126,9 +145,22 @@ describe('PublicBookingService', () => {
     bookings.create.mockRejectedValue(error);
 
     await expect(
-      service.create('happy-pets-demo', request),
+      service.create('happy-pets-demo', request, idempotencyKey),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'PLAN_NO_LONGER_AVAILABLE' }),
+    });
+  });
+
+  it('maps reuse of a key with different input to a typed conflict', async () => {
+    bookings.create.mockRejectedValue(
+      new IdempotencyKeyReusedError('already used'),
+    );
+
+    await expect(
+      service.create('happy-pets-demo', request, idempotencyKey),
+    ).rejects.toMatchObject({
+      constructor: ConflictException,
+      response: expect.objectContaining({ code: 'IDEMPOTENCY_KEY_REUSED' }),
     });
   });
 });

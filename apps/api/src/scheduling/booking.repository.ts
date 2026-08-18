@@ -10,6 +10,7 @@ import {
   SchedulerInputError,
 } from './domain/compound-scheduler';
 import {
+  IdempotencyKeyReusedError,
   InvalidBookingDateError,
   InvalidServiceSelectionError,
   PlanNoLongerAvailableError,
@@ -35,18 +36,43 @@ interface AppointmentRow {
   id: string;
 }
 
+interface IdempotentAppointmentRow {
+  id: string;
+  requestFingerprint: string;
+  startsAt: Date;
+  endsAt: Date;
+  totalPriceMinor: number;
+  currency: string;
+}
+
+interface IdempotentAppointmentStepRow {
+  sequenceNumber: number;
+  serviceId: string;
+  startsAt: Date;
+  endsAt: Date;
+}
+
 @Injectable()
 export class BookingRepository {
   constructor(private readonly database: TenantDatabaseService) {}
 
-  create(
+  async create(
     scope: TenantScope,
     context: PublicBusinessSchedulingContext,
     command: CreateBookingCommand,
   ): Promise<CreatedBooking> {
-    return this.database.transaction(scope, (transaction) =>
-      this.createInTransaction(transaction, context, command),
-    );
+    try {
+      return await this.database.transaction(scope, (transaction) =>
+        this.createInTransaction(transaction, context, command),
+      );
+    } catch (error) {
+      if (!isIdempotencyUniqueViolation(error)) throw error;
+      const replay = await this.database.transaction(scope, (transaction) =>
+        this.findIdempotentBooking(transaction, command),
+      );
+      if (replay) return replay;
+      throw error;
+    }
   }
 
   private async createInTransaction(
@@ -54,6 +80,9 @@ export class BookingRepository {
     context: PublicBusinessSchedulingContext,
     command: CreateBookingCommand,
   ): Promise<CreatedBooking> {
+    const replay = await this.findIdempotentBooking(transaction, command);
+    if (replay) return replay;
+
     let localDay: { rangeStart: Date; rangeEnd: Date };
     try {
       localDay = localDateRangeToInstants(command.date, context.timezone);
@@ -202,8 +231,9 @@ export class BookingRepository {
     const appointmentRows = await transaction.query<AppointmentRow>(
       `insert into appointments
          (business_id, location_id, customer_id, status, starts_at, ends_at,
-          total_price_minor, currency, notes)
-       values ($1, $2, $3, 'Confirmed', $4, $5, $6, $7, $8)
+          total_price_minor, currency, notes, idempotency_key,
+          idempotency_request_fingerprint)
+       values ($1, $2, $3, 'Confirmed', $4, $5, $6, $7, $8, $9, $10)
        returning id`,
       [
         context.locationId,
@@ -213,6 +243,8 @@ export class BookingRepository {
         totalPriceMinor,
         currency,
         command.notes ?? null,
+        command.idempotencyKey,
+        command.requestFingerprint,
       ],
     );
     const appointmentId = appointmentRows[0]?.id;
@@ -259,4 +291,63 @@ export class BookingRepository {
       })),
     };
   }
+
+  private async findIdempotentBooking(
+    transaction: TenantTransaction,
+    command: Pick<CreateBookingCommand, 'idempotencyKey' | 'requestFingerprint'>,
+  ): Promise<CreatedBooking | null> {
+    const appointmentRows = await transaction.query<IdempotentAppointmentRow>(
+      `select id,
+              idempotency_request_fingerprint as "requestFingerprint",
+              starts_at as "startsAt",
+              ends_at as "endsAt",
+              total_price_minor as "totalPriceMinor",
+              currency
+       from appointments
+       where business_id = $1
+         and idempotency_key = $2`,
+      [command.idempotencyKey],
+    );
+    const appointment = appointmentRows[0];
+    if (!appointment) return null;
+    if (appointment.requestFingerprint !== command.requestFingerprint) {
+      throw new IdempotencyKeyReusedError(
+        'Idempotency key was already used for a different booking request',
+      );
+    }
+
+    const steps = await transaction.query<IdempotentAppointmentStepRow>(
+      `select sequence_number as "sequenceNumber",
+              service_id as "serviceId",
+              starts_at as "startsAt",
+              ends_at as "endsAt"
+       from appointment_steps
+       where business_id = $1
+         and appointment_id = $2
+       order by sequence_number`,
+      [appointment.id],
+    );
+    return {
+      appointmentId: appointment.id,
+      status: 'Confirmed',
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+      totalPriceMinor: appointment.totalPriceMinor,
+      currency: appointment.currency,
+      steps,
+    };
+  }
+}
+
+function isIdempotencyUniqueViolation(
+  error: unknown,
+): error is { code: '23505'; constraint: string } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505' &&
+    'constraint' in error &&
+    error.constraint === 'appointments_business_idempotency_unique'
+  );
 }

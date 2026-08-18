@@ -1,8 +1,9 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOperation,
   ApiTags,
@@ -19,6 +20,11 @@ export class PublicBookingController {
 
   @Post()
   @ApiOperation({ summary: 'Atomically create a compound appointment' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    description: 'A UUID v4 reused only when retrying the same booking request',
+    required: true,
+  })
   @ApiCreatedResponse({ type: PublicBookingResponseDto })
   @ApiBadRequestResponse({ description: 'Invalid booking request' })
   @ApiNotFoundResponse({ description: 'Business was not found' })
@@ -26,7 +32,8 @@ export class PublicBookingController {
   create(
     @Param() params: BusinessSlugParamsDto,
     @Body() request: CreatePublicBookingDto,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
   ): Promise<PublicBookingResponseDto> {
-    return this.bookings.create(params.businessSlug, request);
+    return this.bookings.create(params.businessSlug, request, idempotencyKey);
   }
 }

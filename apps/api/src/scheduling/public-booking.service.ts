@@ -4,8 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { isUUID } from 'class-validator';
 import { TenantScope } from '../tenancy/tenant-scope';
 import {
+  IdempotencyKeyReusedError,
   InvalidBookingDateError,
   InvalidServiceSelectionError,
   PlanNoLongerAvailableError,
@@ -25,7 +28,14 @@ export class PublicBookingService {
   async create(
     businessSlug: string,
     request: CreatePublicBookingDto,
+    idempotencyKey: string | undefined,
   ): Promise<PublicBookingResponseDto> {
+    if (typeof idempotencyKey !== 'string' || !isUUID(idempotencyKey, '4')) {
+      throw new BadRequestException({
+        code: 'INVALID_IDEMPOTENCY_KEY',
+        message: 'Idempotency-Key must be a UUID v4',
+      });
+    }
     const context = await this.directory.findBusinessBySlug(businessSlug);
     if (!context) {
       throw new NotFoundException({
@@ -39,6 +49,8 @@ export class PublicBookingService {
         TenantScope.forBusiness(context.businessId),
         context,
         {
+          idempotencyKey,
+          requestFingerprint: fingerprintBookingRequest(request),
           date: request.date,
           startsAt: new Date(request.startsAt),
           serviceIds: request.serviceIds,
@@ -79,9 +91,33 @@ export class PublicBookingService {
           message: 'The selected booking time is no longer available',
         });
       }
+      if (error instanceof IdempotencyKeyReusedError) {
+        throw new ConflictException({
+          code: 'IDEMPOTENCY_KEY_REUSED',
+          message: error.message,
+        });
+      }
       throw error;
     }
   }
+}
+
+function fingerprintBookingRequest(request: CreatePublicBookingDto): string {
+  const canonicalRequest = {
+    date: request.date,
+    startsAt: new Date(request.startsAt).toISOString(),
+    serviceIds: request.serviceIds,
+    customer: {
+      firstName: request.customer.firstName,
+      lastName: request.customer.lastName,
+      email: request.customer.email?.toLowerCase() ?? null,
+      phoneE164: request.customer.phoneE164,
+    },
+    notes: request.notes ?? null,
+  };
+  return createHash('sha256')
+    .update(JSON.stringify(canonicalRequest))
+    .digest('hex');
 }
 
 function isExclusionError(error: unknown): error is { code: '23P01' } {

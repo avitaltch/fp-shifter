@@ -27,13 +27,14 @@ export async function requestNestApi(
     body,
     signal,
     apiBaseUrl,
+    headers: requestHeaders = {},
     fetchImpl = globalThis.fetch,
   } = {}
 ) {
   const baseUrl = apiBaseUrl || resolveApiConfig().apiBaseUrl;
   const normalizedPath = String(path).replace(/^\/+/, '');
   const url = `${baseUrl.replace(/\/+$/, '')}/${normalizedPath}`;
-  const headers = { Accept: 'application/json' };
+  const headers = { Accept: 'application/json', ...requestHeaders };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   let response;

@@ -213,7 +213,11 @@ test.describe('Booking Flow E2E', () => {
     });
     await page.route('**/api/v1/public/businesses/happy-pets-demo/**', async (route) => {
       const request = route.request();
-      requests.push({ url: request.url(), body: request.postDataJSON() });
+      requests.push({
+        url: request.url(),
+        body: request.postDataJSON(),
+        idempotencyKey: request.headers()['idempotency-key'],
+      });
       if (request.url().endsWith('/catalog')) {
         return route.fulfill({
           status: 200,
@@ -302,6 +306,9 @@ test.describe('Booking Flow E2E', () => {
       serviceIds: [serviceId],
       customer: { phoneE164: '+972501234567' },
     });
+    expect(bookingRequests[0].idempotencyKey).toMatch(
+      /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
+    );
     expect(supabaseRequests).toEqual([]);
   });
 });

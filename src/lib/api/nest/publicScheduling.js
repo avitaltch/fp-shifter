@@ -66,8 +66,11 @@ export async function loadPublicBookingSlots(
 export async function submitPublicBooking(
   businessSlug,
   { firstName, lastName, phoneE164, visitDate, startsAt, serviceIds },
-  options
+  { idempotencyKey, headers, ...options } = {}
 ) {
+  if (!idempotencyKey) {
+    throw new Error('An idempotency key is required to submit a public booking');
+  }
   const booking = await createPublicBooking(
     businessSlug,
     {
@@ -76,7 +79,10 @@ export async function submitPublicBooking(
       serviceIds,
       customer: { firstName, lastName, phoneE164 },
     },
-    options
+    {
+      ...options,
+      headers: { ...headers, 'Idempotency-Key': idempotencyKey },
+    }
   );
   return {
     ...booking,

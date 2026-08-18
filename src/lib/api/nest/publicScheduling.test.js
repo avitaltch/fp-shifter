@@ -149,7 +149,10 @@ describe('NestJS public scheduling adapter', () => {
         startsAt: '2030-01-07T07:00:00.000Z',
         serviceIds: ['service-1'],
       },
-      optionsFor(fetchImpl)
+      {
+        ...optionsFor(fetchImpl),
+        idempotencyKey: '00000000-0000-4000-8000-000000000444',
+      }
     );
 
     expect(result).toMatchObject({
@@ -163,5 +166,21 @@ describe('NestJS public scheduling adapter', () => {
     expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({
       customer: { phoneE164: '+972501234567' },
     });
+    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({
+      'Idempotency-Key': '00000000-0000-4000-8000-000000000444',
+    });
+  });
+
+  it('refuses to submit a public booking without an idempotency key', async () => {
+    await expect(
+      submitPublicBooking('happy-pets-demo', {
+        firstName: 'Ari',
+        lastName: 'Cohen',
+        phoneE164: '+972501234567',
+        visitDate: '2030-01-07',
+        startsAt: '2030-01-07T07:00:00.000Z',
+        serviceIds: ['service-1'],
+      })
+    ).rejects.toThrow('idempotency key is required');
   });
 });

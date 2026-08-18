@@ -57,6 +57,24 @@ describe('requestNestApi', () => {
     });
   });
 
+  it('forwards caller headers alongside the JSON contract headers', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(mockResponse({ body: { ok: true } }));
+
+    await requestNestApi('bookings', {
+      method: 'POST',
+      body: { serviceIds: ['service-1'] },
+      headers: { 'Idempotency-Key': 'request-key' },
+      apiBaseUrl: 'https://api.example.com/api/v1',
+      fetchImpl,
+    });
+
+    expect(fetchImpl.mock.calls[0][1].headers).toEqual({
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'request-key',
+    });
+  });
+
   it('maps network failures while allowing AbortError to propagate', async () => {
     const networkError = await requestNestApi('catalog', {
       apiBaseUrl: 'https://api.example.com/api/v1',

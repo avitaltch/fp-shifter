@@ -415,14 +415,22 @@ describe('CustomerBookingPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'אישור הזמנה' }));
 
     await waitFor(() => {
-      expect(submitPublicBooking).toHaveBeenCalledWith('happy-pets-demo', {
-        firstName: 'דנה',
-        lastName: 'לוי',
-        phoneE164: '+972501234567',
-        visitDate,
-        startsAt,
-        serviceIds: ['service-1'],
-      });
+      expect(submitPublicBooking).toHaveBeenCalledWith(
+        'happy-pets-demo',
+        {
+          firstName: 'דנה',
+          lastName: 'לוי',
+          phoneE164: '+972501234567',
+          visitDate,
+          startsAt,
+          serviceIds: ['service-1'],
+        },
+        {
+          idempotencyKey: expect.stringMatching(
+            /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/
+          ),
+        }
+      );
     });
     expect(mockNavigate).toHaveBeenCalledWith(
       '/book/happy-pets-demo/success',
