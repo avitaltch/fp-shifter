@@ -43,6 +43,8 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Deterministic demo-business seed.
 - NestJS modular-monolith and PostgreSQL migration/job ADRs.
 - Passing baseline frontend and backend checks.
+- Atomic compound booking, secure customer cancellation, and PostgreSQL-backed local notifications.
+- Durable public-booking quotas and protection against anonymous customer-profile replacement.
 
 ### Stabilization completed
 
@@ -67,7 +69,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Configuration APIs for services, provider skills, working hours, and exceptions.
 - Manager and provider operational APIs.
 - Waitlist and cancellation backfill.
-- Real notification adapters and pilot operations.
+- Provider-ready real notification adapters and pilot operations.
 
 ## Delivery principles
 
@@ -170,7 +172,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R3 — Atomic booking and public booking vertical slice
 
 **Estimate:** 5–7 focused engineering days
-**Status:** In progress — atomic booking, idempotency, management tokens, cancellation, concurrency proof, and the public slug-based frontend journey are implemented; a real-stack browser test remains
+**Status:** Implemented except for the final real-stack browser journey
 **Goal:** Let a customer find and commit a real compound appointment through NestJS/PostgreSQL.
 
 **Backend work**
@@ -254,7 +256,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R6 — PostgreSQL outbox, reminders, and manager notifications
 
 **Estimate:** 5–7 focused engineering days
-**Status:** In progress — transactional intent, reminder policy, fake providers, worker leases, retries, failure audit, and fallback are implemented locally
+**Status:** Implemented and locally verified with fake providers
 **Goal:** Prove notification behavior locally before paying for delivery providers.
 
 **Work**
@@ -428,4 +430,4 @@ Do not add these before evidence requires them:
 
 ## Immediate next action
 
-Implement R3's atomic booking command and concurrency test. Recompute the selected plan inside one transaction and treat PostgreSQL exclusion conflicts as the final concurrency authority.
+Implement R7 waitlist registration and sequential cancellation-backfill offers. Keep matching and claim transitions tenant-scoped, transactional, expiring, and compatible with ordered multi-service demand.

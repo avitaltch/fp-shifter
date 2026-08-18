@@ -245,7 +245,10 @@ describe('AppModule with PostgreSQL', () => {
           .set('Idempotency-Key', secondIdempotencyKey)
           .send(bookingRequest),
       ]);
-      expect(responses.map(({ status }) => status).sort()).toEqual([201, 409]);
+      expect(
+        responses.map(({ status }) => status).sort(),
+        JSON.stringify(responses.map(({ body }) => body)),
+      ).toEqual([201, 409]);
       const winner = responses.find(({ status }) => status === 201);
       const loser = responses.find(({ status }) => status === 409);
       expect(winner?.body).toMatchObject({
@@ -377,6 +380,155 @@ describe('AppModule with PostgreSQL', () => {
       .expect(({ body }) => {
         expect(body).toMatchObject({ code: 'INVALID_IDEMPOTENCY_KEY' });
       });
+  });
+
+  it('rate limits repeated public booking attempts without storing contact data', async () => {
+    const phoneE164 = '+972501230095';
+    const attemptBooking = () =>
+      request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          date: '2030-01-07',
+          startsAt: '2030-01-07T05:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID],
+          customer: {
+            firstName: 'Rate',
+            lastName: 'Limit',
+            phoneE164,
+          },
+        });
+    await databaseClient.query(
+      `delete from public_rate_limit_buckets
+       where limiter like 'public-booking-%'`,
+    );
+
+    try {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const response = await attemptBooking();
+        expect([400, 409]).toContain(response.status);
+      }
+
+      await attemptBooking()
+        .expect(429)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({
+            code: 'PUBLIC_BOOKING_RATE_LIMITED',
+            retryAfterSeconds: expect.any(Number),
+          });
+        });
+
+      const buckets = await databaseClient.query<{
+        bucketHash: string;
+      }>(
+        `select bucket_hash as "bucketHash"
+         from public_rate_limit_buckets
+         where limiter like 'public-booking-%'`,
+      );
+      expect(buckets.rows).toHaveLength(2);
+      expect(
+        buckets.rows.every(({ bucketHash }) =>
+          /^[a-f0-9]{64}$/.test(bucketHash),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(buckets.rows)).not.toContain(phoneE164);
+    } finally {
+      await databaseClient.query(
+        `delete from public_rate_limit_buckets
+         where limiter like 'public-booking-%'`,
+      );
+    }
+  });
+
+  it('does not let an anonymous booking overwrite or reroute an existing customer', async () => {
+    const phoneE164 = '+972501230094';
+    const existingEmail = 'existing-customer@example.test';
+    const attackerEmail = 'replacement@example.test';
+    const idempotencyKey = randomUUID();
+
+    try {
+      await databaseClient.query(
+        `insert into customers
+           (business_id, first_name, last_name, email, phone_e164)
+         values ($1, 'Existing', 'Customer', $2, $3)`,
+        [HAPPY_PETS_BUSINESS_ID, existingEmail, phoneE164],
+      );
+      await databaseClient.query(
+        `insert into business_notification_policies
+           (business_id, customer_primary_channel)
+         values ($1, 'Email')
+         on conflict (business_id) do update
+         set customer_primary_channel = excluded.customer_primary_channel,
+             customer_fallback_channel = null`,
+        [HAPPY_PETS_BUSINESS_ID],
+      );
+
+      const booking = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({
+          date: '2030-01-07',
+          startsAt: '2030-01-07T14:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID],
+          customer: {
+            firstName: 'Replacement',
+            lastName: 'Identity',
+            email: attackerEmail,
+            phoneE164,
+          },
+        })
+        .expect(201);
+
+      const customer = await databaseClient.query<{
+        firstName: string;
+        lastName: string;
+        email: string;
+      }>(
+        `select first_name as "firstName",
+                last_name as "lastName",
+                email::text
+         from customers
+         where business_id = $1 and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+      expect(customer.rows[0]).toEqual({
+        firstName: 'Existing',
+        lastName: 'Customer',
+        email: existingEmail,
+      });
+
+      const confirmation = await databaseClient.query<{
+        recipient: string;
+        customerFirstName: string;
+      }>(
+        `select recipient,
+                payload->>'customerFirstName' as "customerFirstName"
+         from notification_jobs
+         where business_id = $1
+           and appointment_id = $2
+           and kind = 'BookingConfirmation'`,
+        [HAPPY_PETS_BUSINESS_ID, booking.body.appointmentId],
+      );
+      expect(confirmation.rows[0]).toEqual({
+        recipient: existingEmail,
+        customerFirstName: 'Existing',
+      });
+    } finally {
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1 and idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, idempotencyKey],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1 and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+      await databaseClient.query(
+        `delete from business_notification_policies where business_id = $1`,
+        [HAPPY_PETS_BUSINESS_ID],
+      );
+    }
   });
 
   it('schedules reminders transactionally and delivers due jobs exactly once locally', async () => {

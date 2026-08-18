@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Ip, Param, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -33,7 +33,13 @@ export class PublicBookingController {
     @Param() params: BusinessSlugParamsDto,
     @Body() request: CreatePublicBookingDto,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Ip() clientAddress: string,
   ): Promise<PublicBookingResponseDto> {
-    return this.bookings.create(params.businessSlug, request, idempotencyKey);
+    return this.bookings.create(
+      params.businessSlug,
+      request,
+      idempotencyKey,
+      clientAddress,
+    );
   }
 }

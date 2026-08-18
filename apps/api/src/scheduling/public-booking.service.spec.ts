@@ -13,6 +13,7 @@ import {
 import { BookingRepository } from './booking.repository';
 import { ManagementTokenService } from './management-token.service';
 import { PublicBookingService } from './public-booking.service';
+import { PublicBookingRateLimiter } from './public-booking-rate-limiter.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
 
 const request = {
@@ -30,12 +31,14 @@ const request = {
   },
 };
 const idempotencyKey = '00000000-0000-4000-8000-000000000444';
+const clientAddress = '203.0.113.10';
 
 describe('PublicBookingService', () => {
   let service: PublicBookingService;
   let directory: { findBusinessBySlug: ReturnType<typeof vi.fn> };
   let bookings: { create: ReturnType<typeof vi.fn> };
   let managementTokens: { issue: ReturnType<typeof vi.fn> };
+  let rateLimiter: { assertAllowed: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     directory = {
@@ -78,12 +81,14 @@ describe('PublicBookingService', () => {
         expiresAt: new Date('2031-01-07T12:00:00.000Z'),
       }),
     };
+    rateLimiter = { assertAllowed: vi.fn().mockResolvedValue(undefined) };
     const module = await Test.createTestingModule({
       providers: [
         PublicBookingService,
         { provide: PublicSchedulingRepository, useValue: directory },
         { provide: BookingRepository, useValue: bookings },
         { provide: ManagementTokenService, useValue: managementTokens },
+        { provide: PublicBookingRateLimiter, useValue: rateLimiter },
       ],
     }).compile();
     service = module.get(PublicBookingService);
@@ -94,6 +99,7 @@ describe('PublicBookingService', () => {
       'happy-pets-demo',
       request,
       idempotencyKey,
+      clientAddress,
     );
 
     expect(response).toMatchObject({
@@ -128,14 +134,15 @@ describe('PublicBookingService', () => {
     directory.findBusinessBySlug.mockResolvedValue(null);
 
     await expect(
-      service.create('missing', request, idempotencyKey),
+      service.create('missing', request, idempotencyKey, clientAddress),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(bookings.create).not.toHaveBeenCalled();
+    expect(rateLimiter.assertAllowed).not.toHaveBeenCalled();
   });
 
   it('rejects a missing or malformed idempotency key before database access', async () => {
     await expect(
-      service.create('happy-pets-demo', request, undefined),
+      service.create('happy-pets-demo', request, undefined, clientAddress),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'INVALID_IDEMPOTENCY_KEY' }),
     });
@@ -149,7 +156,7 @@ describe('PublicBookingService', () => {
     );
 
     await expect(
-      service.create('happy-pets-demo', request, idempotencyKey),
+      service.create('happy-pets-demo', request, idempotencyKey, clientAddress),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -160,7 +167,7 @@ describe('PublicBookingService', () => {
     bookings.create.mockRejectedValue(error);
 
     await expect(
-      service.create('happy-pets-demo', request, idempotencyKey),
+      service.create('happy-pets-demo', request, idempotencyKey, clientAddress),
     ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'PLAN_NO_LONGER_AVAILABLE' }),
     });
@@ -172,7 +179,7 @@ describe('PublicBookingService', () => {
     );
 
     await expect(
-      service.create('happy-pets-demo', request, idempotencyKey),
+      service.create('happy-pets-demo', request, idempotencyKey, clientAddress),
     ).rejects.toMatchObject({
       constructor: ConflictException,
       response: expect.objectContaining({ code: 'IDEMPOTENCY_KEY_REUSED' }),

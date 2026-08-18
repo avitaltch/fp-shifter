@@ -17,6 +17,7 @@ import { BookingRepository } from './booking.repository';
 import type { CreatePublicBookingDto } from './dto/create-public-booking.dto';
 import type { PublicBookingResponseDto } from './dto/public-booking-response.dto';
 import { ManagementTokenService } from './management-token.service';
+import { PublicBookingRateLimiter } from './public-booking-rate-limiter.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
 
 @Injectable()
@@ -25,12 +26,14 @@ export class PublicBookingService {
     private readonly directory: PublicSchedulingRepository,
     private readonly bookings: BookingRepository,
     private readonly managementTokens: ManagementTokenService,
+    private readonly rateLimiter: PublicBookingRateLimiter,
   ) {}
 
   async create(
     businessSlug: string,
     request: CreatePublicBookingDto,
     idempotencyKey: string | undefined,
+    clientAddress: string,
   ): Promise<PublicBookingResponseDto> {
     if (typeof idempotencyKey !== 'string' || !isUUID(idempotencyKey, '4')) {
       throw new BadRequestException({
@@ -45,6 +48,11 @@ export class PublicBookingService {
         message: 'Business was not found',
       });
     }
+    await this.rateLimiter.assertAllowed({
+      businessSlug: context.businessSlug,
+      clientAddress,
+      phoneE164: request.customer.phoneE164,
+    });
     const managementToken = this.managementTokens.issue(
       context.businessId,
       idempotencyKey,

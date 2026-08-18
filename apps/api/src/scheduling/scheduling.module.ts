@@ -10,6 +10,7 @@ import { PublicAppointmentManagementController } from './public-appointment-mana
 import { PublicAppointmentManagementService } from './public-appointment-management.service';
 import { PublicBookingController } from './public-booking.controller';
 import { PublicBookingService } from './public-booking.service';
+import { PublicBookingRateLimiter } from './public-booking-rate-limiter.service';
 import { PublicCatalogController } from './public-catalog.controller';
 import { PublicCatalogService } from './public-catalog.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
@@ -32,6 +33,7 @@ import { SchedulingRepository } from './scheduling.repository';
     AppointmentManagementRepository,
     ManagementTokenService,
     PublicBookingService,
+    PublicBookingRateLimiter,
     PublicAppointmentManagementService,
   ],
   exports: [

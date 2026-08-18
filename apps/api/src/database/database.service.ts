@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import type { Pool } from 'pg';
+import type { Pool, QueryResultRow } from 'pg';
 import { DATABASE_POOL } from './database.constants';
 
 @Injectable()
@@ -28,6 +28,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   async ping(): Promise<void> {
     await this.pool.query('select 1');
+  }
+
+  async query<Row extends QueryResultRow>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<readonly Row[]> {
+    const result = await this.pool.query<Row>(text, [...values]);
+    return result.rows;
   }
 
   async onModuleDestroy(): Promise<void> {

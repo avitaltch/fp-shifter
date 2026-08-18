@@ -7,6 +7,10 @@ export interface ApplicationEnvironment {
   DATABASE_URL: string;
   MANAGEMENT_TOKEN_SECRET: string;
   MANAGEMENT_TOKEN_TTL_DAYS: number;
+  PUBLIC_BOOKING_IP_LIMIT: number;
+  PUBLIC_BOOKING_IP_WINDOW_SECONDS: number;
+  PUBLIC_BOOKING_CONTACT_LIMIT: number;
+  PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS: number;
   NOTIFICATION_WORKER_BATCH_SIZE: number;
   NOTIFICATION_WORKER_LEASE_SECONDS: number;
   NOTIFICATION_WORKER_POLL_MS: number;
@@ -106,6 +110,34 @@ export function validateEnvironment(
       'MANAGEMENT_TOKEN_TTL_DAYS',
       1,
       3_650,
+    ),
+    PUBLIC_BOOKING_IP_LIMIT: parseInteger(
+      environment.PUBLIC_BOOKING_IP_LIMIT,
+      20,
+      'PUBLIC_BOOKING_IP_LIMIT',
+      1,
+      10_000,
+    ),
+    PUBLIC_BOOKING_IP_WINDOW_SECONDS: parseInteger(
+      environment.PUBLIC_BOOKING_IP_WINDOW_SECONDS,
+      300,
+      'PUBLIC_BOOKING_IP_WINDOW_SECONDS',
+      1,
+      86_400,
+    ),
+    PUBLIC_BOOKING_CONTACT_LIMIT: parseInteger(
+      environment.PUBLIC_BOOKING_CONTACT_LIMIT,
+      5,
+      'PUBLIC_BOOKING_CONTACT_LIMIT',
+      1,
+      10_000,
+    ),
+    PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS: parseInteger(
+      environment.PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS,
+      3_600,
+      'PUBLIC_BOOKING_CONTACT_WINDOW_SECONDS',
+      1,
+      86_400,
     ),
     NOTIFICATION_WORKER_BATCH_SIZE: parseInteger(
       environment.NOTIFICATION_WORKER_BATCH_SIZE,

@@ -38,12 +38,14 @@ describe('PublicBookingController', () => {
       { businessSlug: 'happy-pets-demo' },
       bookingRequest,
       idempotencyKey,
+      '203.0.113.10',
     );
 
     expect(bookings.create).toHaveBeenCalledWith(
       'happy-pets-demo',
       bookingRequest,
       idempotencyKey,
+      '203.0.113.10',
     );
   });
 });

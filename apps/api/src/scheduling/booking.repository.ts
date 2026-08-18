@@ -17,6 +17,7 @@ import {
   PlanNoLongerAvailableError,
 } from './booking.errors';
 import type {
+  BookingCustomerInput,
   CreateBookingCommand,
   CreatedBooking,
 } from './booking.types';
@@ -31,6 +32,9 @@ import type {
 
 interface CustomerRow {
   id: string;
+  firstName: string;
+  email: string | null;
+  phoneE164: string;
 }
 
 interface AppointmentRow {
@@ -208,26 +212,11 @@ export class BookingRepository {
       throw new PlanNoLongerAvailableError('Selected plan is no longer available');
     }
 
-    const customerRows = await transaction.query<CustomerRow>(
-      `insert into customers
-         (business_id, first_name, last_name, email, phone_e164)
-       values ($1, $2, $3, $4, $5)
-       on conflict (business_id, phone_e164) where deleted_at is null
-       do update set
-         first_name = excluded.first_name,
-         last_name = excluded.last_name,
-         email = coalesce(excluded.email, customers.email),
-         updated_at = now()
-       returning id`,
-      [
-        command.customer.firstName,
-        command.customer.lastName,
-        command.customer.email ?? null,
-        command.customer.phoneE164,
-      ],
+    const customer = await this.findOrCreateCustomer(
+      transaction,
+      command.customer,
     );
-    const customerId = customerRows[0]?.id;
-    if (!customerId) throw new Error('Customer upsert did not return an ID');
+    const customerId = customer.id;
 
     const totalPriceMinor = selectedServices.reduce(
       (sum, service) => sum + (service?.priceMinor ?? 0),
@@ -293,9 +282,9 @@ export class BookingRepository {
       endsAt: plan.endsAt,
       businessName: context.businessName,
       timezone: context.timezone,
-      customerFirstName: command.customer.firstName,
-      customerEmail: command.customer.email,
-      customerPhoneE164: command.customer.phoneE164,
+      customerFirstName: customer.firstName,
+      customerEmail: customer.email ?? undefined,
+      customerPhoneE164: customer.phoneE164,
       steps: plan.steps.map((step) => {
         const service = selectedServices[step.sequenceNumber - 1];
         if (!service) throw new Error('Notification service snapshot is missing');
@@ -324,6 +313,44 @@ export class BookingRepository {
         endsAt: step.endsAt,
       })),
     };
+  }
+
+  private async findOrCreateCustomer(
+    transaction: TenantTransaction,
+    customer: BookingCustomerInput,
+  ): Promise<CustomerRow> {
+    const inserted = await transaction.query<CustomerRow>(
+      `insert into customers
+         (business_id, first_name, last_name, email, phone_e164)
+       values ($1, $2, $3, $4, $5)
+       on conflict (business_id, phone_e164) where deleted_at is null
+       do nothing
+       returning id,
+                 first_name as "firstName",
+                 email::text as email,
+                 phone_e164 as "phoneE164"`,
+      [
+        customer.firstName,
+        customer.lastName,
+        customer.email ?? null,
+        customer.phoneE164,
+      ],
+    );
+    if (inserted[0]) return inserted[0];
+
+    const existing = await transaction.query<CustomerRow>(
+      `select id,
+              first_name as "firstName",
+              email::text as email,
+              phone_e164 as "phoneE164"
+       from customers
+       where business_id = $1
+         and phone_e164 = $2
+         and deleted_at is null`,
+      [customer.phoneE164],
+    );
+    if (!existing[0]) throw new Error('Customer lookup did not return a customer');
+    return existing[0];
   }
 
   private async findIdempotentBooking(
