@@ -3,6 +3,7 @@ set -eu
 
 : "${APP_SUPABASE_URL:?APP_SUPABASE_URL is required}"
 : "${APP_SUPABASE_ANON_KEY:?APP_SUPABASE_ANON_KEY is required}"
+APP_API_URL="${APP_API_URL:-}"
 
 # Values are emitted into JavaScript, so accept only the character sets used by
 # HTTP(S) base URLs and Supabase publishable/JWT keys.
@@ -16,9 +17,15 @@ if ! printf '%s' "$APP_SUPABASE_ANON_KEY" | grep -Eq '^[A-Za-z0-9._-]+$'; then
   exit 1
 fi
 
+if [ -n "$APP_API_URL" ] && ! printf '%s' "$APP_API_URL" | grep -Eq '^https?://[A-Za-z0-9._:/-]+$'; then
+  echo "APP_API_URL must be an HTTP(S) base URL without query parameters" >&2
+  exit 1
+fi
+
 cat > /usr/share/nginx/html/config.js <<EOF
 window.__APP_CONFIG__ = Object.freeze({
   SUPABASE_URL: "$APP_SUPABASE_URL",
-  SUPABASE_ANON_KEY: "$APP_SUPABASE_ANON_KEY"
+  SUPABASE_ANON_KEY: "$APP_SUPABASE_ANON_KEY",
+  API_URL: "$APP_API_URL"
 });
 EOF

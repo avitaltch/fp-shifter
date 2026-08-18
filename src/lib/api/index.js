@@ -8,3 +8,5 @@ export * from './shifts';
 export * from './assignment';
 export * from './dashboard';
 export * from './team';
+export * from './nest/client';
+export * from './nest/publicScheduling';
