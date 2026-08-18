@@ -43,6 +43,7 @@ function App() {
           <Route path="/book/success" element={<BookingSuccessPage />} />
           <Route path="/book/manage" element={<BookingManagePage />} />
           <Route path="/book/:businessSlug/success" element={<BookingSuccessPage />} />
+          <Route path="/book/:businessSlug/manage" element={<BookingManagePage />} />
           <Route path="/book/:businessSlug" element={<CustomerBookingPage />} />
 
           <Route path="/admin/dashboard" element={

@@ -23,6 +23,7 @@ The database integration suite uses the real AppModule and requires a migrated, 
 
 ```bash
 DATABASE_URL=postgres://shiftsync:shiftsync_local@127.0.0.1:54320/shiftsync \
+  MANAGEMENT_TOKEN_SECRET=replace-with-at-least-32-random-bytes \
   NODE_ENV=test \
   SWAGGER_ENABLED=false \
 npm run api:test:integration
@@ -59,14 +60,32 @@ leave no partial appointment or steps. Retry an uncertain request with the same
 UUID v4 idempotency key and unchanged body to receive the original booking.
 Reusing a key with different input returns `IDEMPOTENCY_KEY_REUSED`.
 
+The booking response includes a capability token for customer
+self-service. Send it as a bearer token; never put it in the API path or query
+string:
+
+```http
+GET /api/v1/public/businesses/:businessSlug/appointments/manage
+Authorization: Bearer sm_...
+
+POST /api/v1/public/businesses/:businessSlug/appointments/manage/cancel
+Authorization: Bearer sm_...
+```
+
+Only a SHA-256 hash is stored in PostgreSQL. Tokens are scoped to the business,
+expire according to `MANAGEMENT_TOKEN_TTL_DAYS`, can be revoked, and return the
+same generic not-found response when invalid to avoid leaking appointments.
+
 ## Local container stack
 
 The replacement stack uses a separate Compose file so the existing self-hosted Supabase path remains available during development.
 
 ```bash
-docker compose -f compose.mvp.yaml up -d --build
-docker compose -f compose.mvp.yaml --profile tools run --rm --build seed
-docker compose -f compose.mvp.yaml ps
+cp .env.mvp.example .env.mvp
+# Replace MVP_POSTGRES_PASSWORD and generate a random MVP_MANAGEMENT_TOKEN_SECRET.
+docker compose --env-file .env.mvp -f compose.mvp.yaml up -d --build
+docker compose --env-file .env.mvp -f compose.mvp.yaml --profile tools run --rm --build seed
+docker compose --env-file .env.mvp -f compose.mvp.yaml ps
 ```
 
 Services:
@@ -124,6 +143,7 @@ Implemented:
 - deterministic ordered multi-provider scheduler and public availability endpoint;
 - atomic compound booking command with PostgreSQL concurrency protection;
 - tenant-scoped booking idempotency with concurrent replay protection;
+- expiring, revocable customer-management tokens with appointment cancellation;
 - unit/controller/HTTP endpoint tests;
 - real AppModule/PostgreSQL readiness and seed integration coverage;
 - CI migration rollback and reapply validation.
@@ -133,5 +153,4 @@ Not implemented yet:
 - authentication endpoints;
 - tenant guards;
 - configuration endpoints for services, provider skills and availability;
-- secure customer-management tokens;
 - notification worker and waitlist.

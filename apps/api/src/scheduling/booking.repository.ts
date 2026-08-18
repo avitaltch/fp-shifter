@@ -39,6 +39,7 @@ interface AppointmentRow {
 interface IdempotentAppointmentRow {
   id: string;
   requestFingerprint: string;
+  managementTokenExpiresAt: Date;
   startsAt: Date;
   endsAt: Date;
   totalPriceMinor: number;
@@ -232,8 +233,9 @@ export class BookingRepository {
       `insert into appointments
          (business_id, location_id, customer_id, status, starts_at, ends_at,
           total_price_minor, currency, notes, idempotency_key,
-          idempotency_request_fingerprint)
-       values ($1, $2, $3, 'Confirmed', $4, $5, $6, $7, $8, $9, $10)
+          idempotency_request_fingerprint, management_token_hash,
+          management_token_expires_at)
+       values ($1, $2, $3, 'Confirmed', $4, $5, $6, $7, $8, $9, $10, $11, $12)
        returning id`,
       [
         context.locationId,
@@ -245,6 +247,8 @@ export class BookingRepository {
         command.notes ?? null,
         command.idempotencyKey,
         command.requestFingerprint,
+        command.managementTokenHash,
+        command.managementTokenExpiresAt,
       ],
     );
     const appointmentId = appointmentRows[0]?.id;
@@ -279,6 +283,7 @@ export class BookingRepository {
     return {
       appointmentId,
       status: 'Confirmed',
+      managementTokenExpiresAt: command.managementTokenExpiresAt,
       startsAt: plan.startsAt,
       endsAt: plan.endsAt,
       totalPriceMinor,
@@ -299,6 +304,7 @@ export class BookingRepository {
     const appointmentRows = await transaction.query<IdempotentAppointmentRow>(
       `select id,
               idempotency_request_fingerprint as "requestFingerprint",
+              management_token_expires_at as "managementTokenExpiresAt",
               starts_at as "startsAt",
               ends_at as "endsAt",
               total_price_minor as "totalPriceMinor",
@@ -330,6 +336,7 @@ export class BookingRepository {
     return {
       appointmentId: appointment.id,
       status: 'Confirmed',
+      managementTokenExpiresAt: appointment.managementTokenExpiresAt,
       startsAt: appointment.startsAt,
       endsAt: appointment.endsAt,
       totalPriceMinor: appointment.totalPriceMinor,

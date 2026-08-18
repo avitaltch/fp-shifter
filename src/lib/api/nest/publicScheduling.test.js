@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createPublicBooking,
+  cancelPublicManagedBooking,
   getPublicCatalog,
+  getPublicManagedAppointment,
   loadPublicBookingCatalog,
   loadPublicBookingSlots,
+  loadPublicManagedAppointment,
   searchPublicAvailability,
   submitPublicBooking,
 } from './publicScheduling';
@@ -182,5 +185,78 @@ describe('NestJS public scheduling adapter', () => {
         serviceIds: ['service-1'],
       })
     ).rejects.toThrow('idempotency key is required');
+  });
+
+  it('uses the management token only in the authorization header', async () => {
+    const fetchImpl = successfulFetch({
+      appointmentId: 'appointment-1',
+      status: 'Confirmed',
+      startsAt: '2030-01-07T22:30:00.000Z',
+      endsAt: '2030-01-07T23:30:00.000Z',
+      totalPriceMinor: 12_500,
+      currency: 'ILS',
+      timezone: 'Asia/Jerusalem',
+      customerFirstName: 'Ari',
+      steps: [{ serviceName: 'Trim' }],
+    });
+
+    const result = await loadPublicManagedAppointment(
+      'happy-pets-demo',
+      'sm_secret-token',
+      optionsFor(fetchImpl)
+    );
+
+    expect(fetchImpl.mock.calls[0][0]).not.toContain('sm_secret-token');
+    expect(fetchImpl.mock.calls[0][1].headers).toMatchObject({
+      Authorization: 'Bearer sm_secret-token',
+    });
+    expect(result).toMatchObject({
+      appointment_id: 'appointment-1',
+      visit_date: '2030-01-08',
+      customer_first_name: 'Ari',
+      service_names: ['Trim'],
+    });
+  });
+
+  it('cancels through the token-authenticated management endpoint', async () => {
+    const response = {
+      appointmentId: 'appointment-1',
+      status: 'Cancelled',
+      startsAt: '2030-01-07T07:00:00.000Z',
+      endsAt: '2030-01-07T08:00:00.000Z',
+      totalPriceMinor: 12_500,
+      currency: 'ILS',
+      timezone: 'Asia/Jerusalem',
+      customerFirstName: 'Ari',
+      steps: [],
+    };
+    const fetchImpl = successfulFetch(response);
+
+    await expect(
+      cancelPublicManagedBooking('happy-pets-demo', 'sm_secret-token', {
+        ...optionsFor(fetchImpl),
+        headers: { 'X-Test': 'kept' },
+      })
+    ).resolves.toMatchObject({ status: 'Cancelled' });
+    expect(fetchImpl.mock.calls[0][0]).toMatch(
+      /\/public\/businesses\/happy-pets-demo\/appointments\/manage\/cancel$/
+    );
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      headers: expect.objectContaining({
+        Authorization: 'Bearer sm_secret-token',
+        'X-Test': 'kept',
+      }),
+    });
+  });
+
+  it('exposes raw management operations for non-UI consumers', async () => {
+    const fetchImpl = successfulFetch({ appointmentId: 'appointment-1' });
+    await getPublicManagedAppointment(
+      'happy-pets-demo',
+      'sm_secret-token',
+      optionsFor(fetchImpl)
+    );
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 });

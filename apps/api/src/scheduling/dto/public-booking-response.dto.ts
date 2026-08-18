@@ -35,4 +35,10 @@ export class PublicBookingResponseDto {
 
   @ApiProperty({ type: [PublicBookingStepDto] })
   steps!: PublicBookingStepDto[];
+
+  @ApiProperty({ description: 'Bearer token used for customer self-service' })
+  managementToken!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  managementTokenExpiresAt!: string;
 }

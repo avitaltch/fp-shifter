@@ -8,6 +8,8 @@ export interface BookingCustomerInput {
 export interface CreateBookingCommand {
   idempotencyKey: string;
   requestFingerprint: string;
+  managementTokenHash: string;
+  managementTokenExpiresAt: Date;
   date: string;
   startsAt: Date;
   serviceIds: readonly string[];
@@ -25,6 +27,7 @@ export interface CreatedBookingStep {
 export interface CreatedBooking {
   appointmentId: string;
   status: 'Confirmed';
+  managementTokenExpiresAt: Date;
   startsAt: Date;
   endsAt: Date;
   totalPriceMinor: number;

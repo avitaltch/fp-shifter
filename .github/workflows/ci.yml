@@ -26,6 +26,8 @@ jobs:
       VITE_SUPABASE_URL: https://example.supabase.co
       VITE_SUPABASE_ANON_KEY: test-anon-key
       DATABASE_URL: postgres://shiftsync:shiftsync_ci@127.0.0.1:5432/shiftsync_test
+      MANAGEMENT_TOKEN_SECRET: ci-only-management-token-secret-at-least-32-bytes
+      MANAGEMENT_TOKEN_TTL_DAYS: 365
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -17,6 +17,7 @@ const MESSAGES = {
   PAST_MIDNIGHT: 'השילוב שנבחר חורג מעבר לחצות. יש לבחור שעה מוקדמת יותר.',
   APPOINTMENT_NOT_FOUND: 'התור לא נמצא או שכבר בוטל.',
   CANCEL_TOO_LATE: 'לא ניתן לבטל תור שכבר התחיל או שעבר.',
+  CANCELLATION_NOT_ALLOWED: 'לא ניתן לבטל תור שכבר התחיל או הושלם.',
   ALREADY_CANCELLED: 'התור כבר בוטל.',
   USER_NOT_FOUND: 'המשתמש לא נמצא במערכת.',
   CANNOT_CHANGE_OWN_ROLE: 'לא ניתן לשנות את התפקיד של עצמך.',

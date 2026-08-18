@@ -373,6 +373,160 @@ describe('AppModule with PostgreSQL', () => {
       });
   });
 
+  it('manages a booking with an expiring, revocable, tenant-scoped bearer token', async () => {
+    const phoneE164 = '+972501230096';
+    const notes = `integration-management-${Date.now()}`;
+    const idempotencyKey = randomUUID();
+    let appointmentId: string | undefined;
+
+    try {
+      const bookingResponse = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({
+          date: '2030-01-07',
+          startsAt: '2030-01-07T12:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+          customer: {
+            firstName: 'Management',
+            lastName: 'Test',
+            phoneE164,
+          },
+          notes,
+        })
+        .expect(201);
+      appointmentId = bookingResponse.body.appointmentId;
+      const managementToken = bookingResponse.body.managementToken;
+      expect(managementToken).toMatch(/^sm_[A-Za-z0-9_-]{43}$/);
+      expect(bookingResponse.body.managementTokenExpiresAt).toMatch(/Z$/);
+
+      const persistedToken = await databaseClient.query<{
+        managementTokenHash: string;
+      }>(
+        `select management_token_hash as "managementTokenHash"
+         from appointments
+         where business_id = $1
+           and id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(persistedToken.rows[0]?.managementTokenHash).toMatch(
+        /^[a-f0-9]{64}$/,
+      );
+      expect(persistedToken.rows[0]?.managementTokenHash).not.toBe(
+        managementToken,
+      );
+
+      await request(app.getHttpServer())
+        .get('/api/v1/public/businesses/happy-pets-demo/appointments/manage')
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({
+            appointmentId,
+            status: 'Confirmed',
+            customerFirstName: 'Management',
+            timezone: 'Asia/Jerusalem',
+          });
+          expect(body.steps.map(({ serviceName }: { serviceName: string }) => serviceName))
+            .toEqual(['Pet Trim', 'Vaccination']);
+          expect(JSON.stringify(body)).not.toContain('providerUserId');
+          expect(JSON.stringify(body)).not.toContain(managementToken);
+        });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/public/businesses/compound-beauty-demo/appointments/manage')
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(404)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'APPOINTMENT_NOT_FOUND' });
+        });
+
+      await databaseClient.query(
+        `update appointments
+         set management_token_expires_at = now() - interval '1 second'
+         where business_id = $1
+           and id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      await request(app.getHttpServer())
+        .get('/api/v1/public/businesses/happy-pets-demo/appointments/manage')
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(404);
+      await databaseClient.query(
+        `update appointments
+         set management_token_expires_at = now() + interval '1 year'
+         where business_id = $1
+           and id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+
+      await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/appointments/manage/cancel',
+        )
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ appointmentId, status: 'Cancelled' });
+        });
+
+      const persistedCancellation = await databaseClient.query<{
+        appointmentStatus: string;
+        stepStatuses: string[];
+      }>(
+        `select a.status as "appointmentStatus",
+                array_agg(s.status::text order by s.sequence_number) as "stepStatuses"
+         from appointments a
+         join appointment_steps s
+           on s.business_id = a.business_id
+          and s.appointment_id = a.id
+         where a.business_id = $1
+           and a.id = $2
+         group by a.id`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(persistedCancellation.rows[0]).toEqual({
+        appointmentStatus: 'Cancelled',
+        stepStatuses: ['Cancelled', 'Cancelled'],
+      });
+
+      await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/appointments/manage/cancel',
+        )
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ status: 'Cancelled' });
+        });
+
+      await databaseClient.query(
+        `update appointments
+         set management_token_revoked_at = now()
+         where business_id = $1
+           and id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      await request(app.getHttpServer())
+        .get('/api/v1/public/businesses/happy-pets-demo/appointments/manage')
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(404);
+    } finally {
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1
+           and idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, idempotencyKey],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1
+           and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+    }
+  });
+
   it('returns no location-owned records when a location belongs to another tenant', async () => {
     const happyPetsScope = TenantScope.forBusiness(HAPPY_PETS_BUSINESS_ID);
     const rangeStart = new Date('2030-01-07T06:00:00.000Z');

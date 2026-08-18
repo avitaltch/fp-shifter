@@ -5,6 +5,8 @@ export interface ApplicationEnvironment {
   API_HOST: string;
   API_PORT: number;
   DATABASE_URL: string;
+  MANAGEMENT_TOKEN_SECRET: string;
+  MANAGEMENT_TOKEN_TTL_DAYS: number;
   CORS_ORIGINS: string;
   SWAGGER_ENABLED: boolean;
 }
@@ -34,6 +36,20 @@ function parsePort(value: unknown): number {
   return port;
 }
 
+function parseInteger(
+  value: unknown,
+  fallback: number,
+  key: string,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${key} must be an integer between ${minimum} and ${maximum}`);
+  }
+  return parsed;
+}
+
 function parseBoolean(value: unknown, fallback: boolean, key: string): boolean {
   if (value === undefined || value === null || value === '') return fallback;
   if (value === true || value === 'true') return true;
@@ -59,6 +75,13 @@ export function validateEnvironment(
   if (!['postgres:', 'postgresql:'].includes(parsedDatabaseUrl.protocol)) {
     throw new Error('DATABASE_URL must use the postgres protocol');
   }
+  const managementTokenSecret = requiredString(
+    environment,
+    'MANAGEMENT_TOKEN_SECRET',
+  );
+  if (Buffer.byteLength(managementTokenSecret, 'utf8') < 32) {
+    throw new Error('MANAGEMENT_TOKEN_SECRET must be at least 32 bytes');
+  }
 
   const apiHost = String(environment.API_HOST ?? '0.0.0.0').trim();
   if (!apiHost) throw new Error('API_HOST is required');
@@ -73,6 +96,14 @@ export function validateEnvironment(
     API_HOST: apiHost,
     API_PORT: parsePort(environment.API_PORT),
     DATABASE_URL: databaseUrl,
+    MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
+    MANAGEMENT_TOKEN_TTL_DAYS: parseInteger(
+      environment.MANAGEMENT_TOKEN_TTL_DAYS,
+      365,
+      'MANAGEMENT_TOKEN_TTL_DAYS',
+      1,
+      3_650,
+    ),
     CORS_ORIGINS: corsOrigins,
     SWAGGER_ENABLED: parseBoolean(
       environment.SWAGGER_ENABLED,

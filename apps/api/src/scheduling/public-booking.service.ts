@@ -16,6 +16,7 @@ import {
 import { BookingRepository } from './booking.repository';
 import type { CreatePublicBookingDto } from './dto/create-public-booking.dto';
 import type { PublicBookingResponseDto } from './dto/public-booking-response.dto';
+import { ManagementTokenService } from './management-token.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class PublicBookingService {
   constructor(
     private readonly directory: PublicSchedulingRepository,
     private readonly bookings: BookingRepository,
+    private readonly managementTokens: ManagementTokenService,
   ) {}
 
   async create(
@@ -43,6 +45,10 @@ export class PublicBookingService {
         message: 'Business was not found',
       });
     }
+    const managementToken = this.managementTokens.issue(
+      context.businessId,
+      idempotencyKey,
+    );
 
     try {
       const booking = await this.bookings.create(
@@ -51,6 +57,8 @@ export class PublicBookingService {
         {
           idempotencyKey,
           requestFingerprint: fingerprintBookingRequest(request),
+          managementTokenHash: managementToken.hash,
+          managementTokenExpiresAt: managementToken.expiresAt,
           date: request.date,
           startsAt: new Date(request.startsAt),
           serviceIds: request.serviceIds,
@@ -71,6 +79,8 @@ export class PublicBookingService {
           startsAt: step.startsAt.toISOString(),
           endsAt: step.endsAt.toISOString(),
         })),
+        managementToken: managementToken.token,
+        managementTokenExpiresAt: booking.managementTokenExpiresAt.toISOString(),
       };
     } catch (error) {
       if (

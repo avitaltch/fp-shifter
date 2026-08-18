@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { parseCorsOrigins, validateEnvironment } from './environment';
 
+const managementTokenSecret = 'test-management-token-secret-at-least-32-bytes';
+
 describe('validateEnvironment', () => {
   it('applies safe local defaults and parses the API port', () => {
     expect(
       validateEnvironment({
         DATABASE_URL: 'postgres://user:password@localhost:5432/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
         API_PORT: '3100',
       }),
     ).toEqual({
@@ -13,6 +16,8 @@ describe('validateEnvironment', () => {
       API_HOST: '0.0.0.0',
       API_PORT: 3100,
       DATABASE_URL: 'postgres://user:password@localhost:5432/shiftsync',
+      MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
+      MANAGEMENT_TOKEN_TTL_DAYS: 365,
       CORS_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173',
       SWAGGER_ENABLED: true,
     });
@@ -32,6 +37,7 @@ describe('validateEnvironment', () => {
     expect(() =>
       validateEnvironment({
         DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
         API_PORT: '70000',
       }),
     ).toThrow('API_PORT must be an integer between 1 and 65535');
@@ -41,6 +47,7 @@ describe('validateEnvironment', () => {
     expect(() =>
       validateEnvironment({
         DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
         API_HOST: ' ',
       }),
     ).toThrow('API_HOST is required');
@@ -51,6 +58,7 @@ describe('validateEnvironment', () => {
       validateEnvironment({
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
       }).SWAGGER_ENABLED,
     ).toBe(false);
   });
@@ -60,6 +68,7 @@ describe('validateEnvironment', () => {
       validateEnvironment({
         NODE_ENV: 'production',
         DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
         SWAGGER_ENABLED: 'true',
       }).SWAGGER_ENABLED,
     ).toBe(true);
@@ -69,9 +78,29 @@ describe('validateEnvironment', () => {
     expect(() =>
       validateEnvironment({
         DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
         SWAGGER_ENABLED: 'yes',
       }),
     ).toThrow('SWAGGER_ENABLED must be true or false');
+  });
+
+  it('requires a sufficiently long management-token secret', () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: 'too-short',
+      }),
+    ).toThrow('MANAGEMENT_TOKEN_SECRET must be at least 32 bytes');
+  });
+
+  it('validates the management-token lifetime', () => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
+        MANAGEMENT_TOKEN_TTL_DAYS: 0,
+      }),
+    ).toThrow('MANAGEMENT_TOKEN_TTL_DAYS must be an integer between 1 and 3650');
   });
 });
 

@@ -35,6 +35,10 @@ const BookingSuccessPage = () => {
   const customerName = confirmation?.customerName;
   const bookingPath = confirmation?.bookingPath || routeBookingPath;
   const timezone = confirmation?.timezone;
+  const managementPath =
+    businessSlug && booking?.managementToken
+      ? `${bookingPath}/manage#token=${encodeURIComponent(booking.managementToken)}`
+      : null;
 
   return (
     <PageContainer size="sm" className="success-page">
@@ -61,11 +65,15 @@ const BookingSuccessPage = () => {
             </p>
             <p><strong>זמן מוערך:</strong> {formatDuration(booking.total_duration)}</p>
             <p><strong>מחיר:</strong> ₪{booking.total_price}</p>
-            {!confirmation.bookingPath && (
+            {managementPath ? (
+              <Link to={managementPath} className="manage-link">
+                לביטול או שינוי התור
+              </Link>
+            ) : !confirmation.bookingPath ? (
               <Link to="/book/manage" className="manage-link">
                 לביטול או שינוי התור
               </Link>
-            )}
+            ) : null}
           </div>
         ) : (
           <p>ההזמנה נקלטה במערכת. נתראה בקרוב!</p>

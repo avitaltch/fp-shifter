@@ -3,12 +3,19 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import BookingManagePage from './BookingManagePage';
 import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
-import { customerGetAppointment, customerCancelAppointment } from '../lib/api';
+import {
+  cancelPublicManagedBooking,
+  customerGetAppointment,
+  customerCancelAppointment,
+  loadPublicManagedAppointment,
+} from '../lib/api';
 import { formatHebrewDate } from '../lib/dates';
 
 vi.mock('../lib/api', () => ({
   customerGetAppointment: vi.fn(),
   customerCancelAppointment: vi.fn(),
+  loadPublicManagedAppointment: vi.fn(),
+  cancelPublicManagedBooking: vi.fn(),
 }));
 
 const appointment = {
@@ -27,6 +34,21 @@ const renderPage = () =>
       <Routes>
         <Route path="/book/manage" element={<BookingManagePage />} />
         <Route path="/book" element={<div>booking page</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+
+const renderPublicPage = () =>
+  render(
+    <MemoryRouter
+      initialEntries={['/book/happy-pets-demo/manage#token=sm_management-token']}
+    >
+      <Routes>
+        <Route
+          path="/book/:businessSlug/manage"
+          element={<BookingManagePage />}
+        />
+        <Route path="/book/:businessSlug" element={<div>booking page</div>} />
       </Routes>
     </MemoryRouter>
   );
@@ -149,5 +171,58 @@ describe('BookingManagePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ביטול התור' }));
 
     expect(customerCancelAppointment).not.toHaveBeenCalled();
+  });
+
+  it('loads and cancels a public appointment with its management token', async () => {
+    loadPublicManagedAppointment.mockResolvedValue({
+      ...appointment,
+      timezone: 'Asia/Jerusalem',
+      start_time: '2030-01-07T07:00:00.000Z',
+      end_time: '2030-01-07T08:00:00.000Z',
+    });
+    cancelPublicManagedBooking.mockResolvedValue({
+      ...appointment,
+      status: 'Cancelled',
+    });
+    renderPublicPage();
+
+    expect(await screen.findByText('פרטי התור')).toBeInTheDocument();
+    expect(loadPublicManagedAppointment).toHaveBeenCalledWith(
+      'happy-pets-demo',
+      'sm_management-token'
+    );
+    expect(customerGetAppointment).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'ביטול התור' }));
+    await waitFor(() => {
+      expect(cancelPublicManagedBooking).toHaveBeenCalledWith(
+        'happy-pets-demo',
+        'sm_management-token'
+      );
+    });
+    expect(customerCancelAppointment).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'קביעת תור חדש' })).toHaveAttribute(
+      'href',
+      '/book/happy-pets-demo'
+    );
+  });
+
+  it('does not show the legacy phone lookup when a public token is missing', async () => {
+    render(
+      <MemoryRouter initialEntries={['/book/happy-pets-demo/manage']}>
+        <Routes>
+          <Route
+            path="/book/:businessSlug/manage"
+            element={<BookingManagePage />}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(
+      await screen.findByText('קישור ניהול התור חסר או אינו תקין.')
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText('טלפון')).not.toBeInTheDocument();
+    expect(loadPublicManagedAppointment).not.toHaveBeenCalled();
   });
 });

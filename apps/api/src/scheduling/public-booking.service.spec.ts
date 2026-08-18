@@ -11,6 +11,7 @@ import {
   PlanNoLongerAvailableError,
 } from './booking.errors';
 import { BookingRepository } from './booking.repository';
+import { ManagementTokenService } from './management-token.service';
 import { PublicBookingService } from './public-booking.service';
 import { PublicSchedulingRepository } from './public-scheduling.repository';
 
@@ -34,6 +35,7 @@ describe('PublicBookingService', () => {
   let service: PublicBookingService;
   let directory: { findBusinessBySlug: ReturnType<typeof vi.fn> };
   let bookings: { create: ReturnType<typeof vi.fn> };
+  let managementTokens: { issue: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
     directory = {
@@ -48,6 +50,7 @@ describe('PublicBookingService', () => {
       create: vi.fn().mockResolvedValue({
         appointmentId: '00000000-0000-4000-8000-000000000999',
         status: 'Confirmed',
+        managementTokenExpiresAt: new Date('2031-01-07T12:00:00.000Z'),
         startsAt: new Date('2030-01-07T12:00:00.000Z'),
         endsAt: new Date('2030-01-07T13:00:00.000Z'),
         totalPriceMinor: 20000,
@@ -68,11 +71,19 @@ describe('PublicBookingService', () => {
         ],
       }),
     };
+    managementTokens = {
+      issue: vi.fn().mockReturnValue({
+        token: 'sm_management-token',
+        hash: 'a'.repeat(64),
+        expiresAt: new Date('2031-01-07T12:00:00.000Z'),
+      }),
+    };
     const module = await Test.createTestingModule({
       providers: [
         PublicBookingService,
         { provide: PublicSchedulingRepository, useValue: directory },
         { provide: BookingRepository, useValue: bookings },
+        { provide: ManagementTokenService, useValue: managementTokens },
       ],
     }).compile();
     service = module.get(PublicBookingService);
@@ -92,6 +103,8 @@ describe('PublicBookingService', () => {
       endsAt: '2030-01-07T13:00:00.000Z',
       totalPriceMinor: 20000,
       currency: 'ILS',
+      managementToken: 'sm_management-token',
+      managementTokenExpiresAt: '2031-01-07T12:00:00.000Z',
     });
     expect(response.steps).toHaveLength(2);
     expect(JSON.stringify(response)).not.toContain('providerUserId');
@@ -103,6 +116,8 @@ describe('PublicBookingService', () => {
       expect.objectContaining({
         idempotencyKey,
         requestFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        managementTokenHash: 'a'.repeat(64),
+        managementTokenExpiresAt: new Date('2031-01-07T12:00:00.000Z'),
         startsAt: new Date(request.startsAt),
         serviceIds: request.serviceIds,
       }),

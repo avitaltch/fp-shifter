@@ -137,6 +137,24 @@ describe('BookingSuccessPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('links a public confirmation to its token management route', () => {
+    renderPublicWithState({
+      ...confirmation,
+      bookingPath: '/book/happy-pets-demo',
+      booking: {
+        ...confirmation.booking,
+        managementToken: 'sm_secret-token',
+      },
+    });
+
+    expect(
+      screen.getByRole('link', { name: 'לביטול או שינוי התור' })
+    ).toHaveAttribute(
+      'href',
+      '/book/happy-pets-demo/manage#token=sm_secret-token'
+    );
+  });
+
   it('does not leak a stored confirmation across business slugs', () => {
     sessionStorage.setItem(
       BOOKING_CONFIRMATION_KEY,
