@@ -626,13 +626,48 @@ describe('AppModule with PostgreSQL', () => {
       const offerToken = actionPath?.split('#token=')[1];
       expect(offerToken).toMatch(/^wo_[A-Za-z0-9_-]{43}$/);
 
-      await request(app.getHttpServer())
-        .post(
-          '/api/v1/public/businesses/happy-pets-demo/waitlist/offers/reject',
-        )
-        .set('Authorization', `Bearer ${offerToken}`)
-        .expect(204);
-      await expect(waitlistRepository.processNextMatch()).resolves.toBe(true);
+      await expect(
+        waitlistRepository.expireNextOffer(
+          new Date('2027-01-01T00:00:00.000Z'),
+        ),
+      ).resolves.toBe(true);
+      const expired = await databaseClient.query<{
+        offerStatus: string;
+        holdStatus: string;
+        notificationStatus: string;
+        expiredEvents: number;
+      }>(
+        `select o.status::text as "offerStatus",
+                a.status::text as "holdStatus",
+                j.status::text as "notificationStatus",
+                (
+                  select count(*)::integer
+                  from waitlist_events v
+                  where v.business_id = o.business_id
+                    and v.waitlist_offer_id = o.id
+                    and v.kind = 'Expired'
+                ) as "expiredEvents"
+         from waitlist_offers o
+         join appointments a
+           on a.business_id = o.business_id and a.id = o.hold_appointment_id
+         join notification_jobs j
+           on j.business_id = o.business_id
+          and j.appointment_id = o.hold_appointment_id
+          and j.kind = 'WaitlistAvailability'
+         where o.business_id = $1 and o.id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, offer.rows[0]?.offerId],
+      );
+      expect(expired.rows[0]).toEqual({
+        offerStatus: 'Expired',
+        holdStatus: 'Cancelled',
+        notificationStatus: 'Cancelled',
+        expiredEvents: 1,
+      });
+      await expect(
+        waitlistRepository.processNextMatch(
+          new Date('2027-01-01T00:00:00.000Z'),
+        ),
+      ).resolves.toBe(true);
 
       const secondOffer = await databaseClient.query<{
         offerId: string;
