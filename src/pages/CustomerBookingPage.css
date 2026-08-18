@@ -368,6 +368,42 @@
   gap: 0.6rem;
 }
 
+.waitlist-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid rgba(75, 79, 196, 0.2);
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--primary-soft), rgba(255, 255, 255, 0.9));
+  color: var(--primary-strong);
+}
+
+.waitlist-callout > svg {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+}
+
+.waitlist-callout p {
+  margin: 0.35rem 0 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.waitlist-button {
+  min-height: 42px;
+}
+
+.waitlist-success {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(50, 154, 116, 0.25);
+  border-radius: 14px;
+  background: var(--mint-soft);
+  color: var(--text-primary);
+  font-weight: 650;
+}
+
 .slot-chip {
   min-height: 44px;
   border: 1.5px solid var(--border-light);

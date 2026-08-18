@@ -59,6 +59,16 @@ export function toTimeDisplay(time, timeZone) {
   return String(time).slice(0, 5);
 }
 
+/** YYYY-MM-DD for an ISO instant in an IANA timezone. */
+export function dateInTimezone(instant, timeZone) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(instant));
+}
+
 /** Hebrew long date for a YYYY-MM-DD string (parsed as local, not UTC). */
 export function formatHebrewDate(dateString) {
   if (!dateString) return '';
@@ -78,6 +88,53 @@ export function formatDuration(minutes) {
   if (h === 0) return `${m} דקות`;
   const hours = h === 1 ? 'שעה' : `${h} שעות`;
   return m === 0 ? hours : `${hours} ו-${m} דקות`;
+}
+
+/** UTC instants bounding one YYYY-MM-DD calendar day in an IANA timezone. */
+export function businessDateRangeToInstants(dateString, timeZone) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const start = zonedMidnightToInstant(year, month, day, timeZone);
+  const nextDate = new Date(Date.UTC(year, month - 1, day + 1));
+  const end = zonedMidnightToInstant(
+    nextDate.getUTCFullYear(),
+    nextDate.getUTCMonth() + 1,
+    nextDate.getUTCDate(),
+    timeZone
+  );
+  return { windowStartsAt: start.toISOString(), windowEndsAt: end.toISOString() };
+}
+
+function zonedMidnightToInstant(year, month, day, timeZone) {
+  const desired = Date.UTC(year, month - 1, day);
+  let candidate = desired;
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const values = Object.fromEntries(
+      formatter
+        .formatToParts(new Date(candidate))
+        .filter(({ type }) => type !== 'literal')
+        .map(({ type, value }) => [type, Number(value)])
+    );
+    const observed = Date.UTC(
+      values.year,
+      values.month - 1,
+      values.day,
+      values.hour,
+      values.minute,
+      values.second
+    );
+    candidate += desired - observed;
+  }
+  return new Date(candidate);
 }
 
 /** Parse YYYY-MM-DD as a local Date (noon avoids DST edge cases). */

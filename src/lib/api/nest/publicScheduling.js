@@ -1,4 +1,5 @@
 import { requestNestApi } from './client';
+import { dateInTimezone } from '../../dates';
 
 function businessPath(businessSlug, suffix) {
   return `public/businesses/${encodeURIComponent(businessSlug)}/${suffix}`;
@@ -22,6 +23,58 @@ export function createPublicBooking(businessSlug, request, options = {}) {
     method: 'POST',
     body: request,
   });
+}
+
+export function createPublicWaitlistEntry(businessSlug, request, options = {}) {
+  return requestNestApi(businessPath(businessSlug, 'waitlist'), {
+    ...options,
+    method: 'POST',
+    body: request,
+  });
+}
+
+export function acceptPublicWaitlistOffer(
+  businessSlug,
+  offerToken,
+  { headers, ...options } = {}
+) {
+  return requestNestApi(businessPath(businessSlug, 'waitlist/offers/accept'), {
+    ...options,
+    method: 'POST',
+    headers: { ...headers, Authorization: `Bearer ${offerToken}` },
+  });
+}
+
+export function submitPublicWaitlist(
+  businessSlug,
+  { firstName, lastName, phoneE164, serviceIds, windowStartsAt, windowEndsAt },
+  options
+) {
+  return createPublicWaitlistEntry(
+    businessSlug,
+    {
+      windowStartsAt,
+      windowEndsAt,
+      serviceIds,
+      customer: { firstName, lastName, phoneE164 },
+    },
+    options
+  );
+}
+
+export function adaptPublicBooking(booking, visitDate) {
+  return {
+    ...booking,
+    appointment_id: booking.appointmentId,
+    visit_date: visitDate,
+    start_time: booking.startsAt,
+    end_time: booking.endsAt,
+    total_duration: Math.round(
+      (new Date(booking.endsAt).getTime() - new Date(booking.startsAt).getTime()) /
+        60_000
+    ),
+    total_price: booking.totalPriceMinor / 100,
+  };
 }
 
 export function getPublicManagedAppointment(
@@ -113,18 +166,7 @@ export async function submitPublicBooking(
       headers: { ...headers, 'Idempotency-Key': idempotencyKey },
     }
   );
-  return {
-    ...booking,
-    appointment_id: booking.appointmentId,
-    visit_date: visitDate,
-    start_time: booking.startsAt,
-    end_time: booking.endsAt,
-    total_duration: Math.round(
-      (new Date(booking.endsAt).getTime() - new Date(booking.startsAt).getTime()) /
-        60_000
-    ),
-    total_price: booking.totalPriceMinor / 100,
-  };
+  return adaptPublicBooking(booking, visitDate);
 }
 
 export async function loadPublicManagedAppointment(
@@ -157,13 +199,4 @@ function adaptManagedAppointment(appointment) {
     customer_first_name: appointment.customerFirstName,
     service_names: appointment.steps.map((step) => step.serviceName),
   };
-}
-
-function dateInTimezone(instant, timezone) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(instant));
 }

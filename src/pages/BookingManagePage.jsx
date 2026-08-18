@@ -9,6 +9,7 @@ import {
 } from '../lib/api';
 import { useAction } from '../hooks/useAction';
 import { formatHebrewDate, toTimeDisplay } from '../lib/dates';
+import { readFragmentCapability } from '../lib/capabilityTokens';
 import PageContainer from '../components/PageContainer/PageContainer';
 import Alert from '../components/Alert/Alert';
 import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
@@ -32,16 +33,21 @@ function readStoredConfirmation() {
 
 const BookingManagePage = () => {
   const { businessSlug } = useParams();
-  const { hash } = useLocation();
+  const { hash, pathname, search } = useLocation();
   const isPublicBooking = Boolean(businessSlug);
   const managementToken = isPublicBooking
-    ? new URLSearchParams(hash.slice(1)).get('token')
+    ? readFragmentCapability(hash, 'sm')
     : null;
   const [phone, setPhone] = useState('');
   const [confirmationNumber, setConfirmationNumber] = useState('');
   const [appointment, setAppointment] = useState(null);
   const [cancelled, setCancelled] = useState(false);
   const { isBusy, message, setMessage, run } = useAction();
+
+  useEffect(() => {
+    if (!isPublicBooking || !hash) return;
+    window.history.replaceState(window.history.state, '', `${pathname}${search}`);
+  }, [hash, isPublicBooking, pathname, search]);
 
   useEffect(() => {
     if (isPublicBooking) {

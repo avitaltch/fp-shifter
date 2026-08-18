@@ -32,6 +32,9 @@ const MESSAGES = {
   API_UNAVAILABLE: 'לא ניתן להתחבר למערכת כרגע. יש לנסות שוב מאוחר יותר.',
   INVALID_API_RESPONSE: 'התקבלה תשובה לא תקינה מהמערכת. יש לנסות שוב מאוחר יותר.',
   IDEMPOTENCY_KEY_REUSED: 'פרטי ההזמנה השתנו במהלך השליחה. יש לנסות שוב.',
+  DUPLICATE_WAITLIST_ENTRY: 'כבר קיימת בקשת המתנה פעילה עבור השירותים והתאריך האלה.',
+  WAITLIST_OFFER_EXPIRED: 'הזמן שהוצע כבר אינו שמור. נמשיך לעדכן אותך כשיתפנה זמן נוסף.',
+  WAITLIST_OFFER_NOT_FOUND: 'קישור ההמתנה אינו תקין או שכבר נעשה בו שימוש.',
   'Invalid login credentials': 'אימייל או סיסמה שגויים.',
 };
 

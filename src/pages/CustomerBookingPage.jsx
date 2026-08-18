@@ -7,12 +7,20 @@ import {
   loadPublicBookingCatalog,
   loadPublicBookingSlots,
   submitPublicBooking,
+  submitPublicWaitlist,
 } from '../lib/api';
 import { friendlyError } from '../lib/errors';
 import { toIsraeliE164 } from '../lib/phone';
 import { idempotencyAttempt } from '../lib/idempotency';
-import { Check, Clock, Calendar as CalendarIcon, User, Scissors, Sparkles } from 'lucide-react';
-import { jerusalemTodayString, jerusalemAddDaysString, toTimeDisplay, formatDuration, formatHebrewDate } from '../lib/dates';
+import { Bell, Check, Clock, Calendar as CalendarIcon, User, Scissors, Sparkles } from 'lucide-react';
+import {
+  businessDateRangeToInstants,
+  jerusalemTodayString,
+  jerusalemAddDaysString,
+  toTimeDisplay,
+  formatDuration,
+  formatHebrewDate,
+} from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
@@ -40,6 +48,8 @@ const CustomerBookingPage = () => {
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isJoiningWaitlist, setIsJoiningWaitlist] = useState(false);
+  const [waitlistMessage, setWaitlistMessage] = useState(null);
   const bookingAttemptRef = useRef(null);
 
   useEffect(() => {
@@ -132,6 +142,8 @@ const CustomerBookingPage = () => {
   }, [businessSlug, selectedDate, selectedServices]);
 
   const toggleService = (id) => {
+    setWaitlistMessage(null);
+    setSubmitError(null);
     setSelectedServices((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
     );
@@ -196,7 +208,16 @@ const CustomerBookingPage = () => {
 
       // Keep a copy so the success page survives a refresh / direct visit.
       try {
-        sessionStorage.setItem(BOOKING_CONFIRMATION_KEY, JSON.stringify(confirmation));
+        const storedConfirmation = { ...confirmation };
+        if (businessSlug && confirmation.booking) {
+          const safeBooking = { ...confirmation.booking };
+          delete safeBooking.managementToken;
+          storedConfirmation.booking = safeBooking;
+        }
+        sessionStorage.setItem(
+          BOOKING_CONFIRMATION_KEY,
+          JSON.stringify(storedConfirmation)
+        );
       } catch {
         /* storage unavailable — router state still works */
       }
@@ -232,6 +253,46 @@ const CustomerBookingPage = () => {
       }
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleJoinWaitlist = async () => {
+    setSubmitError(null);
+    setWaitlistMessage(null);
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+    const phoneE164 = toIsraeliE164(phone);
+    if (!trimmedFirstName || !trimmedLastName) {
+      setSubmitError('נא להזין שם פרטי ושם משפחה.');
+      return;
+    }
+    if (!phoneE164) {
+      setSubmitError('מספר הטלפון אינו תקין.');
+      return;
+    }
+
+    setIsJoiningWaitlist(true);
+    try {
+      const range = businessDateRangeToInstants(
+        selectedDate,
+        location?.timezone || 'Asia/Jerusalem'
+      );
+      await submitPublicWaitlist(businessSlug, {
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+        phoneE164,
+        serviceIds: selectedServices,
+        ...range,
+      });
+      setWaitlistMessage(
+        'נרשמת לרשימת ההמתנה. אם יתפנה זמן שמתאים לכל השירותים, נשלח לך קישור לאישור.'
+      );
+    } catch (err) {
+      setSubmitError(
+        friendlyError(err, 'לא הצלחנו לצרף אותך לרשימת ההמתנה. יש לנסות שוב.')
+      );
+    } finally {
+      setIsJoiningWaitlist(false);
     }
   };
 
@@ -337,7 +398,11 @@ const CustomerBookingPage = () => {
                     id="visitDate"
                     type="date"
                     value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedDate(e.target.value);
+                      setWaitlistMessage(null);
+                      setSubmitError(null);
+                    }}
                     onClick={(e) => {
                       try {
                         e.currentTarget.showPicker?.();
@@ -358,7 +423,32 @@ const CustomerBookingPage = () => {
                   ) : slotsError ? (
                     <p className="error-state" role="alert">{slotsError}</p>
                   ) : slots.length === 0 ? (
-                    <p className="no-slots">אין שעות פנויות בתאריך זה. יש לבחור תאריך אחר.</p>
+                    businessSlug ? (
+                      <div className="waitlist-callout">
+                        <Bell size={22} aria-hidden="true" />
+                        <div>
+                          <strong>אין כרגע זמן שמתאים לכל השירותים</strong>
+                          <p>
+                            אפשר להצטרף לרשימת ההמתנה. אם יתפנה מקום, הוא יישמר
+                            עבורך לחמש דקות כדי שתוכלו לאשר אותו.
+                          </p>
+                          <button
+                            type="button"
+                            className="btn-secondary waitlist-button"
+                            onClick={handleJoinWaitlist}
+                            disabled={isJoiningWaitlist || Boolean(waitlistMessage)}
+                          >
+                            {isJoiningWaitlist
+                              ? 'מצרף לרשימה...'
+                              : waitlistMessage
+                                ? 'נרשמת בהצלחה'
+                                : 'הצטרפות לרשימת ההמתנה'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="no-slots">אין שעות פנויות בתאריך זה. יש לבחור תאריך אחר.</p>
+                    )
                   ) : (
                     <div className="slots-grid">
                       {slots.map((slot) => (
@@ -417,6 +507,9 @@ const CustomerBookingPage = () => {
           </>
         )}
 
+        {waitlistMessage && (
+          <div className="waitlist-success" role="status">{waitlistMessage}</div>
+        )}
         {submitError && <div className="error-state" role="alert">{submitError}</div>}
 
         <div className="booking-summary" aria-live="polite">

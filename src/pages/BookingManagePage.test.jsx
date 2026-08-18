@@ -27,6 +27,7 @@ const appointment = {
   service_names: ['תספורת', 'צבע'],
   customer_first_name: 'דנה',
 };
+const managementToken = `sm_${'m'.repeat(43)}`;
 
 const renderPage = () =>
   render(
@@ -41,7 +42,7 @@ const renderPage = () =>
 const renderPublicPage = () =>
   render(
     <MemoryRouter
-      initialEntries={['/book/happy-pets-demo/manage#token=sm_management-token']}
+      initialEntries={[`/book/happy-pets-demo/manage#token=${managementToken}`]}
     >
       <Routes>
         <Route
@@ -189,7 +190,7 @@ describe('BookingManagePage', () => {
     expect(await screen.findByText('פרטי התור')).toBeInTheDocument();
     expect(loadPublicManagedAppointment).toHaveBeenCalledWith(
       'happy-pets-demo',
-      'sm_management-token'
+      managementToken
     );
     expect(customerGetAppointment).not.toHaveBeenCalled();
 
@@ -197,7 +198,7 @@ describe('BookingManagePage', () => {
     await waitFor(() => {
       expect(cancelPublicManagedBooking).toHaveBeenCalledWith(
         'happy-pets-demo',
-        'sm_management-token'
+        managementToken
       );
     });
     expect(customerCancelAppointment).not.toHaveBeenCalled();

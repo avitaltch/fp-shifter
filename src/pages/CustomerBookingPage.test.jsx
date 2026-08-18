@@ -10,8 +10,13 @@ import {
   loadPublicBookingCatalog,
   loadPublicBookingSlots,
   submitPublicBooking,
+  submitPublicWaitlist,
 } from '../lib/api';
-import { jerusalemAddDaysString, toTimeDisplay } from '../lib/dates';
+import {
+  businessDateRangeToInstants,
+  jerusalemAddDaysString,
+  toTimeDisplay,
+} from '../lib/dates';
 
 const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }));
 
@@ -27,6 +32,7 @@ vi.mock('../lib/api', () => ({
   loadPublicBookingCatalog: vi.fn(),
   loadPublicBookingSlots: vi.fn(),
   submitPublicBooking: vi.fn(),
+  submitPublicWaitlist: vi.fn(),
 }));
 
 const mockServices = [
@@ -79,6 +85,7 @@ describe('CustomerBookingPage', () => {
     sessionStorage.clear();
     listServices.mockResolvedValue(mockServices);
     getAvailableSlots.mockResolvedValue(mockSlots);
+    submitPublicWaitlist.mockResolvedValue({ waitlistEntryId: 'waitlist-1' });
   });
 
   it('fetches services via the api layer and displays them', async () => {
@@ -188,6 +195,51 @@ describe('CustomerBookingPage', () => {
     expect(
       await screen.findByText('אין שעות פנויות בתאריך זה. יש לבחור תאריך אחר.')
     ).toBeInTheDocument();
+  });
+
+  it('joins the public waitlist for the selected service sequence and local date', async () => {
+    const timezone = 'Asia/Jerusalem';
+    loadPublicBookingCatalog.mockResolvedValue({
+      business: { slug: 'happy-pets-demo', name: 'Happy Pets' },
+      location: { name: 'תל אביב', timezone },
+      services: [mockServices[0], mockServices[1]],
+    });
+    loadPublicBookingSlots.mockResolvedValue([]);
+
+    renderPublicPage();
+    fireEvent.click(await screen.findByText('תספורת'));
+    fireEvent.click(screen.getByText('צבע'));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+    expect(
+      await screen.findByText('אין כרגע זמן שמתאים לכל השירותים')
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('שם פרטי'), { target: { value: 'דנה' } });
+    fireEvent.change(screen.getByLabelText('שם משפחה'), { target: { value: 'לוי' } });
+    fireEvent.change(screen.getByLabelText('טלפון'), {
+      target: { value: '050-1234567' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'הצטרפות לרשימת ההמתנה' })
+    );
+
+    await waitFor(() => {
+      expect(submitPublicWaitlist).toHaveBeenCalledWith('happy-pets-demo', {
+        firstName: 'דנה',
+        lastName: 'לוי',
+        phoneE164: '+972501234567',
+        serviceIds: ['s1', 's2'],
+        ...businessDateRangeToInstants(visitDate, timezone),
+      });
+    });
+    expect(
+      await screen.findByText(/נרשמת לרשימת ההמתנה/)
+    ).toHaveAttribute('role', 'status');
+    expect(screen.getByRole('button', { name: 'נרשמת בהצלחה' })).toBeDisabled();
+    expect(submitPublicBooking).not.toHaveBeenCalled();
+    expect(bookAppointment).not.toHaveBeenCalled();
   });
 
   it('keeps the submit button disabled until everything is filled', async () => {
@@ -384,6 +436,7 @@ describe('CustomerBookingPage', () => {
       end_time: endsAt,
       total_duration: 60,
       total_price: 125,
+      managementToken: `sm_${'m'.repeat(43)}`,
     };
     loadPublicBookingCatalog.mockResolvedValue({
       business: { slug: 'happy-pets-demo', name: 'Happy Pets' },
@@ -448,5 +501,10 @@ describe('CustomerBookingPage', () => {
     expect(listServices).not.toHaveBeenCalled();
     expect(getAvailableSlots).not.toHaveBeenCalled();
     expect(bookAppointment).not.toHaveBeenCalled();
+    const storedConfirmation = JSON.parse(
+      sessionStorage.getItem(BOOKING_CONFIRMATION_KEY)
+    );
+    expect(storedConfirmation.booking.managementToken).toBeUndefined();
+    expect(storedConfirmation.booking.appointment_id).toBe('appointment-1');
   });
 });

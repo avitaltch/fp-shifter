@@ -1,0 +1,29 @@
+.waitlist-claim-card {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  padding: clamp(1.5rem, 5vw, 3rem);
+  text-align: center;
+  border: 1px solid rgba(75, 79, 196, 0.16);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 15% 10%, rgba(231, 111, 91, 0.12), transparent 12rem),
+    var(--bg-elevated);
+  box-shadow: var(--shadow-soft);
+}
+
+.waitlist-claim-card h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 5vw, 2.2rem);
+}
+
+.waitlist-claim-icon {
+  color: var(--primary);
+  filter: drop-shadow(0 8px 16px rgba(75, 79, 196, 0.2));
+  animation: softPop 0.45s var(--ease-spring) both;
+}
+
+.waitlist-claim-card .error-state {
+  width: 100%;
+  margin: 0;
+}

@@ -311,4 +311,136 @@ test.describe('Booking Flow E2E', () => {
     );
     expect(supabaseRequests).toEqual([]);
   });
+
+  test('Public no-slot journey registers ordered demand on the waitlist', async ({ page }) => {
+    const serviceIds = ['service-trim', 'service-vaccine'];
+    let waitlistRequest;
+    await page.addInitScript(() => {
+      window.__APP_CONFIG__ = Object.freeze({
+        API_URL: 'http://localhost:5173/api/v1',
+      });
+    });
+    await page.route('**/api/v1/public/businesses/happy-pets-demo/**', async (route) => {
+      const request = route.request();
+      if (request.url().endsWith('/catalog')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            business: { slug: 'happy-pets-demo', name: 'Happy Pets' },
+            location: { name: 'תל אביב', timezone: 'Asia/Jerusalem' },
+            services: serviceIds.map((id, index) => ({
+              id,
+              name: index === 0 ? 'תספורת' : 'חיסון',
+              description: '',
+              durationMinutes: 30,
+              priceMinor: 5_000,
+              currency: 'ILS',
+            })),
+          }),
+        });
+      }
+      if (request.url().endsWith('/availability/search')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ slots: [], diagnostics: [] }),
+        });
+      }
+      if (request.url().endsWith('/waitlist')) {
+        waitlistRequest = request.postDataJSON();
+        return route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ waitlistEntryId: 'waitlist-1' }),
+        });
+      }
+      return route.abort();
+    });
+
+    await page.goto('/book/happy-pets-demo');
+    await page.locator('.service-card', { hasText: 'תספורת' }).click();
+    await page.locator('.service-card', { hasText: 'חיסון' }).click();
+    await page.locator('#visitDate').fill(visitDate);
+    await expect(page.getByText('אין כרגע זמן שמתאים לכל השירותים')).toBeVisible();
+    await page.locator('#firstName').fill('דנה');
+    await page.locator('#lastName').fill('לוי');
+    await page.locator('#phone').fill('050-1234567');
+    await page.getByRole('button', { name: 'הצטרפות לרשימת ההמתנה' }).click();
+
+    await expect(page.getByText(/נרשמת לרשימת ההמתנה/)).toBeVisible();
+    expect(waitlistRequest).toMatchObject({
+      serviceIds,
+      customer: {
+        firstName: 'דנה',
+        lastName: 'לוי',
+        phoneE164: '+972501234567',
+      },
+    });
+    expect(Date.parse(waitlistRequest.windowStartsAt)).not.toBeNaN();
+    expect(Date.parse(waitlistRequest.windowEndsAt)).not.toBeNaN();
+  });
+
+  test('Waitlist offer claims with an authorization header and no persistent token', async ({ page }) => {
+    const token = `wo_${'a'.repeat(43)}`;
+    let authorizationHeader;
+    await page.addInitScript(() => {
+      window.__APP_CONFIG__ = Object.freeze({
+        API_URL: 'http://localhost:5173/api/v1',
+      });
+    });
+    await page.route('**/api/v1/public/businesses/happy-pets-demo/**', async (route) => {
+      const request = route.request();
+      if (request.url().endsWith('/catalog')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            business: { slug: 'happy-pets-demo', name: 'Happy Pets' },
+            location: { name: 'תל אביב', timezone: 'Asia/Jerusalem' },
+            services: [{
+              id: 'service-trim',
+              name: 'תספורת',
+              description: '',
+              durationMinutes: 30,
+              priceMinor: 5_000,
+              currency: 'ILS',
+            }],
+          }),
+        });
+      }
+      if (request.url().endsWith('/waitlist/offers/accept')) {
+        authorizationHeader = request.headers().authorization;
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            appointmentId: 'appointment-1',
+            status: 'Confirmed',
+            startsAt: `${visitDate}T07:00:00.000Z`,
+            endsAt: `${visitDate}T07:30:00.000Z`,
+            totalPriceMinor: 5_000,
+            currency: 'ILS',
+            steps: [{ sequenceNumber: 1, serviceId: 'service-trim' }],
+            managementToken: `sm_${'b'.repeat(43)}`,
+            managementTokenExpiresAt: '2031-01-07T07:00:00.000Z',
+          }),
+        });
+      }
+      return route.abort();
+    });
+
+    await page.goto(`/waitlist/claim/happy-pets-demo#token=${token}`);
+
+    await expect(page).toHaveURL(/\/waitlist\/claim\/happy-pets-demo$/);
+    expect(authorizationHeader).toBeUndefined();
+    await page.getByRole('button', { name: 'אישור וקביעת התור' }).click();
+    await expect(page).toHaveURL(/\/book\/happy-pets-demo\/success$/);
+    await expect(page.getByText('התור שלך נקבע בהצלחה!')).toBeVisible();
+    expect(authorizationHeader).toBe(`Bearer ${token}`);
+    expect(page.url()).not.toContain(token);
+    expect(
+      await page.evaluate(() => sessionStorage.getItem('bookingConfirmation'))
+    ).toBeNull();
+  });
 });

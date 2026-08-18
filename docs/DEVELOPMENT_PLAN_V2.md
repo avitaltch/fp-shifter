@@ -45,6 +45,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Passing baseline frontend and backend checks.
 - Atomic compound booking, secure customer cancellation, and PostgreSQL-backed local notifications.
 - Durable public-booking quotas and protection against anonymous customer-profile replacement.
+- Sequential cancellation backfill with expiring holds, atomic claim, and a public waitlist journey.
 
 ### Stabilization completed
 
@@ -68,7 +69,6 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Authentication and role authorization.
 - Configuration APIs for services, provider skills, working hours, and exceptions.
 - Manager and provider operational APIs.
-- Waitlist and cancellation backfill.
 - Provider-ready real notification adapters and pilot operations.
 
 ## Delivery principles
@@ -291,7 +291,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R7 — Waitlist and cancellation backfill
 
 **Estimate:** 5–8 focused engineering days
-**Status:** In progress — registration, durable cancellation matching, sequential compound holds, short-lived offer capabilities, atomic acceptance, rejection/expiry transitions, notification intent, and recovered-revenue audit are implemented; final expiry/second-candidate integration proof and frontend claim flow remain
+**Status:** Implemented and locally verified with real PostgreSQL plus frontend journey tests
 **Goal:** Fill newly available time without overselling it.
 
 **Work**
@@ -317,6 +317,8 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Pending appointments and scheduled steps act as five-minute provider holds under the existing exclusion constraint, without another queue or cache service.
 - Offer and management capabilities are purpose-scoped, hashed at rest, carried in URL fragments for browser handoff, and never exposed in API paths or queries.
 - Acceptance is single-effect and transactional; the appointment, entry, offer, notification/reminder intent, and recovered-revenue event commit together.
+- Real PostgreSQL coverage proves expiry releases the first hold and advances to a second candidate, whose single-use acceptance creates the booking.
+- The public booking page registers unavailable ordered-service demand; offer links claim through an authorization header, strip their fragment, and never persist the capability in browser storage.
 
 ## Later: connect real delivery and prepare a pilot
 
@@ -439,4 +441,4 @@ Do not add these before evidence requires them:
 
 ## Immediate next action
 
-Implement R7 waitlist registration and sequential cancellation-backfill offers. Keep matching and claim transitions tenant-scoped, transactional, expiring, and compatible with ordered multi-service demand.
+Implement R4 authentication, tenant membership guards, and operator configuration APIs. Keep the existing Supabase screens transitional while moving each authenticated journey to the NestJS tenant boundary.

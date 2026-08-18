@@ -12,6 +12,7 @@ const ShiftAssignmentPage = lazy(() => import('./pages/ShiftAssignmentPage'));
 const CustomerBookingPage = lazy(() => import('./pages/CustomerBookingPage'));
 const BookingSuccessPage = lazy(() => import('./pages/BookingSuccessPage'));
 const BookingManagePage = lazy(() => import('./pages/BookingManagePage'));
+const WaitlistClaimPage = lazy(() => import('./pages/WaitlistClaimPage'));
 const EmployeeAvailabilityPage = lazy(() => import('./pages/EmployeeAvailabilityPage'));
 const MyShiftsPage = lazy(() => import('./pages/MyShiftsPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
@@ -45,6 +46,7 @@ function App() {
           <Route path="/book/:businessSlug/success" element={<BookingSuccessPage />} />
           <Route path="/book/:businessSlug/manage" element={<BookingManagePage />} />
           <Route path="/book/:businessSlug" element={<CustomerBookingPage />} />
+          <Route path="/waitlist/claim/:businessSlug" element={<WaitlistClaimPage />} />
 
           <Route path="/admin/dashboard" element={
             <ProtectedRoute allowedRoles={['Admin']}>

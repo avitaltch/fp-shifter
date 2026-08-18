@@ -6,6 +6,8 @@ import {
   jerusalemTodayString,
   jerusalemAddDaysString,
   toTimeDisplay,
+  dateInTimezone,
+  businessDateRangeToInstants,
   formatHebrewDate,
   formatDuration,
   weekdayIndex,
@@ -118,6 +120,32 @@ describe('toTimeDisplay', () => {
     expect(
       toTimeDisplay('2030-01-07T07:45:00.000Z', 'Asia/Jerusalem')
     ).toBe('09:45');
+  });
+});
+
+describe('business timezone boundaries', () => {
+  it('formats an instant as the business calendar date', () => {
+    expect(
+      dateInTimezone('2030-01-07T22:30:00.000Z', 'Asia/Jerusalem')
+    ).toBe('2030-01-08');
+  });
+
+  it('returns winter midnight boundaries in Jerusalem', () => {
+    expect(
+      businessDateRangeToInstants('2030-01-07', 'Asia/Jerusalem')
+    ).toEqual({
+      windowStartsAt: '2030-01-06T22:00:00.000Z',
+      windowEndsAt: '2030-01-07T22:00:00.000Z',
+    });
+  });
+
+  it('returns summer midnight boundaries in Jerusalem', () => {
+    expect(
+      businessDateRangeToInstants('2030-07-07', 'Asia/Jerusalem')
+    ).toEqual({
+      windowStartsAt: '2030-07-06T21:00:00.000Z',
+      windowEndsAt: '2030-07-07T21:00:00.000Z',
+    });
   });
 });
 

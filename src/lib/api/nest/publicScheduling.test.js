@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createPublicBooking,
+  createPublicWaitlistEntry,
+  acceptPublicWaitlistOffer,
   cancelPublicManagedBooking,
   getPublicCatalog,
   getPublicManagedAppointment,
@@ -9,6 +11,7 @@ import {
   loadPublicManagedAppointment,
   searchPublicAvailability,
   submitPublicBooking,
+  submitPublicWaitlist,
 } from './publicScheduling';
 
 function successfulFetch(body) {
@@ -75,6 +78,72 @@ describe('NestJS public scheduling adapter', () => {
       method: 'POST',
       body: JSON.stringify(request),
     });
+  });
+
+  it('submits a waitlist entry with ordered services and customer data', async () => {
+    const fetchImpl = successfulFetch({ waitlistEntryId: 'waitlist-1' });
+    const request = {
+      firstName: 'Ari',
+      lastName: 'Cohen',
+      phoneE164: '+972501234567',
+      serviceIds: ['service-1', 'service-2'],
+      windowStartsAt: '2030-01-06T22:00:00.000Z',
+      windowEndsAt: '2030-01-07T22:00:00.000Z',
+    };
+
+    await expect(
+      submitPublicWaitlist(
+        'happy-pets-demo',
+        request,
+        optionsFor(fetchImpl)
+      )
+    ).resolves.toEqual({ waitlistEntryId: 'waitlist-1' });
+
+    expect(fetchImpl.mock.calls[0][0]).toMatch(
+      /\/public\/businesses\/happy-pets-demo\/waitlist$/
+    );
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({
+      windowStartsAt: request.windowStartsAt,
+      windowEndsAt: request.windowEndsAt,
+      serviceIds: request.serviceIds,
+      customer: {
+        firstName: 'Ari',
+        lastName: 'Cohen',
+        phoneE164: '+972501234567',
+      },
+    });
+  });
+
+  it('keeps a waitlist offer capability out of the request URL', async () => {
+    const token = `wo_${'a'.repeat(43)}`;
+    const fetchImpl = successfulFetch({ appointmentId: 'appointment-1' });
+
+    await acceptPublicWaitlistOffer('happy-pets-demo', token, {
+      ...optionsFor(fetchImpl),
+      headers: { 'X-Test': 'kept' },
+    });
+
+    expect(fetchImpl.mock.calls[0][0]).toMatch(
+      /\/public\/businesses\/happy-pets-demo\/waitlist\/offers\/accept$/
+    );
+    expect(fetchImpl.mock.calls[0][0]).not.toContain(token);
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      headers: expect.objectContaining({
+        Authorization: `Bearer ${token}`,
+        'X-Test': 'kept',
+      }),
+    });
+  });
+
+  it('exposes the raw waitlist creation operation for non-UI consumers', async () => {
+    const fetchImpl = successfulFetch({ waitlistEntryId: 'waitlist-1' });
+    await createPublicWaitlistEntry(
+      'happy-pets-demo',
+      { serviceIds: ['service-1'] },
+      optionsFor(fetchImpl)
+    );
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 
   it('adapts the Nest catalog to the existing booking view model', async () => {
