@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { listServices, getAvailableSlots, bookAppointment } from '../lib/api';
+import { useNavigate, Link, useParams } from 'react-router-dom';
+import {
+  listServices,
+  getAvailableSlots,
+  bookAppointment,
+  loadPublicBookingCatalog,
+  loadPublicBookingSlots,
+  submitPublicBooking,
+} from '../lib/api';
 import { friendlyError } from '../lib/errors';
+import { toIsraeliE164 } from '../lib/phone';
 import { Check, Clock, Calendar as CalendarIcon, User, Scissors, Sparkles } from 'lucide-react';
 import { jerusalemTodayString, jerusalemAddDaysString, toTimeDisplay, formatDuration, formatHebrewDate } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
@@ -10,11 +18,12 @@ import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
 import './CustomerBookingPage.css';
 
-const PHONE_PATTERN = /^[0-9+\-\s]{7,15}$/;
-
 const CustomerBookingPage = () => {
   const navigate = useNavigate();
+  const { businessSlug } = useParams();
   const [serviceTypes, setServiceTypes] = useState([]);
+  const [business, setBusiness] = useState(null);
+  const [location, setLocation] = useState(null);
   const [selectedServices, setSelectedServices] = useState([]);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -32,20 +41,47 @@ const CustomerBookingPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
     const fetchServices = async () => {
       try {
         setLoading(true);
         setError(null);
-        setServiceTypes(await listServices());
+        setServiceTypes([]);
+        setSelectedServices([]);
+        setSelectedDate('');
+        setSelectedTime('');
+        if (businessSlug) {
+          const catalog = await loadPublicBookingCatalog(businessSlug, {
+            signal: controller.signal,
+          });
+          if (cancelled) return;
+          setBusiness(catalog.business);
+          setLocation(catalog.location);
+          setServiceTypes(catalog.services);
+        } else {
+          const services = await listServices();
+          if (cancelled) return;
+          setBusiness(null);
+          setLocation(null);
+          setServiceTypes(services);
+        }
       } catch (err) {
-        setError('שגיאה בטעינת השירותים. יש לנסות שוב מאוחר יותר.');
+        if (cancelled || err?.name === 'AbortError') return;
+        setError(
+          friendlyError(err, 'שגיאה בטעינת השירותים. יש לנסות שוב מאוחר יותר.')
+        );
         console.error('Error fetching services:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchServices();
-  }, []);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [businessSlug]);
 
   // Real availability: slots are computed server-side from employee
   // availability, skills, and existing bookings.
@@ -57,16 +93,25 @@ const CustomerBookingPage = () => {
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     const fetchSlots = async () => {
       try {
         setSlotsLoading(true);
         setSlotsError(null);
-        const data = await getAvailableSlots(selectedDate, selectedServices);
+        const data = businessSlug
+          ? await loadPublicBookingSlots(
+              businessSlug,
+              selectedDate,
+              selectedServices,
+              { signal: controller.signal }
+            )
+          : await getAvailableSlots(selectedDate, selectedServices);
         if (!cancelled) {
           setSlots(data || []);
           setSelectedTime('');
         }
       } catch (err) {
+        if (err?.name === 'AbortError') return;
         if (!cancelled) {
           setSlots([]);
           setSelectedTime('');
@@ -80,8 +125,9 @@ const CustomerBookingPage = () => {
     fetchSlots();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [selectedDate, selectedServices]);
+  }, [businessSlug, selectedDate, selectedServices]);
 
   const toggleService = (id) => {
     setSelectedServices((prev) =>
@@ -93,21 +139,31 @@ const CustomerBookingPage = () => {
     e.preventDefault();
     setSubmitError(null);
 
-    if (!PHONE_PATTERN.test(phone.trim())) {
+    const phoneE164 = toIsraeliE164(phone);
+    if (!phoneE164) {
       setSubmitError('מספר הטלפון אינו תקין.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const booking = await bookAppointment({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        phone: phone.trim(),
-        visitDate: selectedDate,
-        startTime: selectedTime,
-        serviceIds: selectedServices,
-      });
+      const booking = businessSlug
+        ? await submitPublicBooking(businessSlug, {
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phoneE164,
+            visitDate: selectedDate,
+            startsAt: selectedTime,
+            serviceIds: selectedServices,
+          })
+        : await bookAppointment({
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            phone: phone.trim(),
+            visitDate: selectedDate,
+            startTime: selectedTime,
+            serviceIds: selectedServices,
+          });
 
       const confirmation = {
         booking,
@@ -116,6 +172,12 @@ const CustomerBookingPage = () => {
           .map((s) => s.name),
         customerName: `${firstName.trim()} ${lastName.trim()}`,
         phone: phone.trim(),
+        ...(businessSlug
+          ? {
+              bookingPath: `/book/${businessSlug}`,
+              timezone: location?.timezone,
+            }
+          : {}),
       };
 
       // Keep a copy so the success page survives a refresh / direct visit.
@@ -125,17 +187,31 @@ const CustomerBookingPage = () => {
         /* storage unavailable — router state still works */
       }
 
-      navigate('/book/success', { state: confirmation });
+      navigate(
+        businessSlug ? `/book/${businessSlug}/success` : '/book/success',
+        { state: confirmation }
+      );
     } catch (err) {
       console.error(err);
       setSubmitError(friendlyError(err, 'שגיאת תקשורת, יש לנסות שוב.'));
       // The chosen slot may be gone (taken by someone else or now in the
       // past) — clear the selection and refresh the list
-      const message = err?.message || '';
-      if (message.includes('SLOT_TAKEN') || message.includes('SLOT_IN_PAST')) {
+      const code = err?.code || err?.message || '';
+      if (
+        ['SLOT_TAKEN', 'SLOT_IN_PAST', 'PLAN_NO_LONGER_AVAILABLE'].some((value) =>
+          code.includes(value)
+        )
+      ) {
         setSelectedTime('');
         try {
-          setSlots((await getAvailableSlots(selectedDate, selectedServices)) || []);
+          const refreshed = businessSlug
+            ? await loadPublicBookingSlots(
+                businessSlug,
+                selectedDate,
+                selectedServices
+              )
+            : await getAvailableSlots(selectedDate, selectedServices);
+          setSlots(refreshed || []);
         } catch {
           setSlots([]);
         }
@@ -166,12 +242,15 @@ const CustomerBookingPage = () => {
     <PageContainer size="md" className="booking-page">
       <div className="booking-header">
         <span className="booking-kicker"><Sparkles size={15} aria-hidden="true" /> מסלול ביקור חכם</span>
-        <h1>הזמנת תור חדש</h1>
+        <h1>{business ? `הזמנת תור אצל ${business.name}` : 'הזמנת תור חדש'}</h1>
+        {location?.name && <p className="booking-location">{location.name}</p>}
         <p className="subtitle">בוחרים את השירותים לפי הסדר — אנחנו נמצא את הצוות והזמן שמתאימים לכולם.</p>
-        <p className="manage-entry">
-          יש לכם תור?{' '}
-          <Link to="/book/manage">לניהול תור קיים</Link>
-        </p>
+        {!businessSlug && (
+          <p className="manage-entry">
+            יש לכם תור?{' '}
+            <Link to="/book/manage">לניהול תור קיים</Link>
+          </p>
+        )}
         <ol className="booking-progress" aria-label={`שלב ${progressStep} מתוך 3`}>
           {['שירותים', 'מועד', 'פרטים'].map((label, index) => {
             const step = index + 1;
@@ -276,7 +355,7 @@ const CustomerBookingPage = () => {
                           onClick={() => setSelectedTime(slot.slot_start)}
                           aria-pressed={selectedTime === slot.slot_start}
                         >
-                          {toTimeDisplay(slot.slot_start)}
+                          {toTimeDisplay(slot.slot_start, location?.timezone)}
                         </button>
                       ))}
                     </div>
@@ -332,7 +411,7 @@ const CustomerBookingPage = () => {
             <span>סך הכל: <strong>₪{total}</strong></span>
             {selectedDate && selectedTime && (
               <span className="summary-when">
-                <CalendarIcon size={16} /> {formatHebrewDate(selectedDate)}, {toTimeDisplay(selectedTime)}
+                <CalendarIcon size={16} /> {formatHebrewDate(selectedDate)}, {toTimeDisplay(selectedTime, location?.timezone)}
               </span>
             )}
           </div>

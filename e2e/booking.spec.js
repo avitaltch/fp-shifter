@@ -195,4 +195,113 @@ test.describe('Booking Flow E2E', () => {
     ).toBeVisible();
     await expect(page).toHaveURL(/\/book$/);
   });
+
+  test('Business slug journey uses only the NestJS public contracts', async ({ page }) => {
+    const serviceId = '00000000-0000-4000-8000-000000000401';
+    const startsAt = `${visitDate}T07:00:00.000Z`;
+    const endsAt = `${visitDate}T08:00:00.000Z`;
+    const requests = [];
+    const supabaseRequests = [];
+
+    await page.addInitScript(() => {
+      window.__APP_CONFIG__ = Object.freeze({
+        API_URL: 'http://localhost:5173/api/v1',
+      });
+    });
+    page.on('request', (request) => {
+      if (request.url().includes('/rest/v1/')) supabaseRequests.push(request.url());
+    });
+    await page.route('**/api/v1/public/businesses/happy-pets-demo/**', async (route) => {
+      const request = route.request();
+      requests.push({ url: request.url(), body: request.postDataJSON() });
+      if (request.url().endsWith('/catalog')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            business: {
+              slug: 'happy-pets-demo',
+              name: 'Happy Pets',
+              locale: 'he-IL',
+            },
+            location: {
+              name: 'תל אביב',
+              address: null,
+              timezone: 'Asia/Jerusalem',
+            },
+            services: [
+              {
+                id: serviceId,
+                name: 'טיפוח מלא',
+                description: 'טיפול מלא',
+                durationMinutes: 60,
+                priceMinor: 12_500,
+                currency: 'ILS',
+              },
+            ],
+          }),
+        });
+      }
+      if (request.url().endsWith('/availability/search')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            slots: [{ startsAt, endsAt }],
+            diagnostics: [],
+          }),
+        });
+      }
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          appointmentId: '00000000-0000-4000-8000-000000000999',
+          status: 'Confirmed',
+          startsAt,
+          endsAt,
+          totalPriceMinor: 12_500,
+          currency: 'ILS',
+          steps: [],
+        }),
+      });
+    });
+
+    await page.goto('/book/happy-pets-demo');
+    await expect(
+      page.getByRole('heading', { name: 'הזמנת תור אצל Happy Pets' })
+    ).toBeVisible();
+    await page.locator('.service-card', { hasText: 'טיפוח מלא' }).click();
+    await page.locator('#visitDate').fill(visitDate);
+    await page.locator('.slot-chip').first().click();
+    await page.locator('#firstName').fill('דנה');
+    await page.locator('#lastName').fill('לוי');
+    await page.locator('#phone').fill('050-1234567');
+    await page.getByRole('button', { name: 'אישור הזמנה' }).click();
+
+    await expect(page).toHaveURL(/\/book\/happy-pets-demo\/success$/);
+    await expect(
+      page.getByRole('heading', { name: /התור שלך נקבע בהצלחה/ })
+    ).toBeVisible();
+    await expect(page.locator('.booking-details').getByText('₪125')).toBeVisible();
+    const catalogRequests = requests.filter(({ url }) => url.endsWith('/catalog'));
+    const availabilityRequests = requests.filter(({ url }) =>
+      url.endsWith('/availability/search')
+    );
+    const bookingRequests = requests.filter(({ url }) => url.endsWith('/bookings'));
+    expect(catalogRequests.length).toBeGreaterThanOrEqual(1);
+    expect(availabilityRequests).toHaveLength(1);
+    expect(bookingRequests).toHaveLength(1);
+    expect(availabilityRequests[0].body).toEqual({
+      date: visitDate,
+      serviceIds: [serviceId],
+    });
+    expect(bookingRequests[0].body).toMatchObject({
+      date: visitDate,
+      startsAt,
+      serviceIds: [serviceId],
+      customer: { phoneE164: '+972501234567' },
+    });
+    expect(supabaseRequests).toEqual([]);
+  });
 });

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useLayoutEffect } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
 import Footer from './components/Footer/Footer';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
@@ -42,9 +42,8 @@ function App() {
           <Route path="/book" element={<CustomerBookingPage />} />
           <Route path="/book/success" element={<BookingSuccessPage />} />
           <Route path="/book/manage" element={<BookingManagePage />} />
-          {/* Legacy multi-tenant-style links keep working */}
-          <Route path="/book/:businessId" element={<Navigate to="/book" replace />} />
-          <Route path="/book/:businessId/success" element={<Navigate to="/book/success" replace />} />
+          <Route path="/book/:businessSlug/success" element={<BookingSuccessPage />} />
+          <Route path="/book/:businessSlug" element={<CustomerBookingPage />} />
 
           <Route path="/admin/dashboard" element={
             <ProtectedRoute allowedRoles={['Admin']}>

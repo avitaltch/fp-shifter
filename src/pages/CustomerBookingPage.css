@@ -51,6 +51,17 @@
   letter-spacing: -0.04em;
 }
 
+.booking-location {
+  display: inline-flex;
+  margin: 0 0 0.7rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(75, 79, 196, 0.08);
+  color: var(--primary-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .subtitle {
   color: var(--text-secondary);
   max-width: 620px;

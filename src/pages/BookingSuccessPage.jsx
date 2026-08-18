@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { CheckCircle, ArrowRight } from 'lucide-react';
 import { formatHebrewDate, formatDuration, toTimeDisplay } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
@@ -6,10 +6,13 @@ import './BookingSuccessPage.css';
 
 export const BOOKING_CONFIRMATION_KEY = 'bookingConfirmation';
 
-function readStoredConfirmation() {
+function readStoredConfirmation(bookingPath) {
   try {
     const raw = sessionStorage.getItem(BOOKING_CONFIRMATION_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const confirmation = raw ? JSON.parse(raw) : null;
+    return (confirmation?.bookingPath || '/book') === bookingPath
+      ? confirmation
+      : null;
   } catch {
     return null;
   }
@@ -20,10 +23,18 @@ function readStoredConfirmation() {
 // persisted in sessionStorage at booking time.
 const BookingSuccessPage = () => {
   const { state } = useLocation();
-  const confirmation = state?.booking ? state : readStoredConfirmation();
+  const { businessSlug } = useParams();
+  const routeBookingPath = businessSlug ? `/book/${businessSlug}` : '/book';
+  const stateMatchesRoute =
+    state?.booking && (state.bookingPath || '/book') === routeBookingPath;
+  const confirmation = stateMatchesRoute
+    ? state
+    : readStoredConfirmation(routeBookingPath);
   const booking = confirmation?.booking;
   const serviceNames = confirmation?.serviceNames || [];
   const customerName = confirmation?.customerName;
+  const bookingPath = confirmation?.bookingPath || routeBookingPath;
+  const timezone = confirmation?.timezone;
 
   return (
     <PageContainer size="sm" className="success-page">
@@ -45,20 +56,22 @@ const BookingSuccessPage = () => {
             <p>
               <strong>שעה:</strong>{' '}
               {booking.end_time
-                ? `${toTimeDisplay(booking.start_time)} עד ${toTimeDisplay(booking.end_time)}`
-                : toTimeDisplay(booking.start_time)}
+                ? `${toTimeDisplay(booking.start_time, timezone)} עד ${toTimeDisplay(booking.end_time, timezone)}`
+                : toTimeDisplay(booking.start_time, timezone)}
             </p>
             <p><strong>זמן מוערך:</strong> {formatDuration(booking.total_duration)}</p>
             <p><strong>מחיר:</strong> ₪{booking.total_price}</p>
-            <Link to="/book/manage" className="manage-link">
-              לביטול או שינוי התור
-            </Link>
+            {!confirmation.bookingPath && (
+              <Link to="/book/manage" className="manage-link">
+                לביטול או שינוי התור
+              </Link>
+            )}
           </div>
         ) : (
           <p>ההזמנה נקלטה במערכת. נתראה בקרוב!</p>
         )}
 
-        <Link to="/book" className="btn-secondary">
+        <Link to={bookingPath} className="btn-secondary">
           <ArrowRight size={18} />
           חזרה להזמנת תור נוסף
         </Link>

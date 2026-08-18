@@ -26,6 +26,20 @@ const renderWithState = (state) =>
     </MemoryRouter>
   );
 
+const renderPublicWithState = (state, businessSlug = 'happy-pets-demo') =>
+  render(
+    <MemoryRouter
+      initialEntries={[{ pathname: `/book/${businessSlug}/success`, state }]}
+    >
+      <Routes>
+        <Route
+          path="/book/:businessSlug/success"
+          element={<BookingSuccessPage />}
+        />
+      </Routes>
+    </MemoryRouter>
+  );
+
 const expectFullDetails = () => {
   expect(screen.getByText('התור שלך נקבע בהצלחה!')).toBeInTheDocument();
   expect(screen.getByText('apt-42')).toBeInTheDocument();
@@ -100,5 +114,43 @@ describe('BookingSuccessPage', () => {
     expect(
       screen.getByRole('link', { name: 'לביטול או שינוי התור' })
     ).toHaveAttribute('href', '/book/manage');
+  });
+
+  it('keeps a public confirmation scoped to its business route', () => {
+    renderPublicWithState({
+      ...confirmation,
+      bookingPath: '/book/happy-pets-demo',
+      timezone: 'Asia/Jerusalem',
+      booking: {
+        ...confirmation.booking,
+        start_time: '2030-01-07T07:00:00.000Z',
+        end_time: '2030-01-07T08:00:00.000Z',
+      },
+    });
+
+    expect(screen.getByText('09:00 עד 10:00')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /חזרה להזמנת תור נוסף/ })
+    ).toHaveAttribute('href', '/book/happy-pets-demo');
+    expect(
+      screen.queryByRole('link', { name: 'לביטול או שינוי התור' })
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not leak a stored confirmation across business slugs', () => {
+    sessionStorage.setItem(
+      BOOKING_CONFIRMATION_KEY,
+      JSON.stringify({
+        ...confirmation,
+        bookingPath: '/book/another-business',
+      })
+    );
+    renderPublicWithState(undefined);
+
+    expect(screen.getByText('ההזמנה נקלטה במערכת. נתראה בקרוב!')).toBeInTheDocument();
+    expect(screen.queryByText('apt-42')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /חזרה להזמנת תור נוסף/ })
+    ).toHaveAttribute('href', '/book/happy-pets-demo');
   });
 });

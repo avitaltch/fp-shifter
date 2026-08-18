@@ -2,6 +2,7 @@
 // to Hebrew user-facing messages.
 const MESSAGES = {
   SLOT_TAKEN: 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.',
+  PLAN_NO_LONGER_AVAILABLE: 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.',
   SLOT_IN_PAST: 'לא ניתן לקבוע תור בזמן שכבר עבר.',
   INVALID_NAME: 'נא להזין שם פרטי ושם משפחה.',
   INVALID_PHONE: 'מספר הטלפון אינו תקין.',
@@ -25,11 +26,15 @@ const MESSAGES = {
   CANNOT_UNASSIGN_PAST: 'לא ניתן לבטל שיבוץ של טיפול שכבר עבר.',
   CANNOT_DEACTIVATE_SELF: 'לא ניתן להשבית את החשבון של עצמך.',
   FORBIDDEN: 'אין לך הרשאה לבצע פעולה זו.',
+  BUSINESS_NOT_FOUND: 'העסק המבוקש לא נמצא.',
+  INVALID_SERVICE_SELECTION: 'אחד השירותים שנבחרו אינו זמין עוד. יש לרענן את הדף.',
+  API_UNAVAILABLE: 'לא ניתן להתחבר למערכת כרגע. יש לנסות שוב מאוחר יותר.',
+  INVALID_API_RESPONSE: 'התקבלה תשובה לא תקינה מהמערכת. יש לנסות שוב מאוחר יותר.',
   'Invalid login credentials': 'אימייל או סיסמה שגויים.',
 };
 
 export function friendlyError(err, fallback = 'אירעה שגיאה. יש לנסות שוב.') {
-  const raw = err?.message || '';
+  const raw = `${err?.code || ''} ${err?.message || ''}`;
   for (const [code, message] of Object.entries(MESSAGES)) {
     if (raw.includes(code)) return message;
   }

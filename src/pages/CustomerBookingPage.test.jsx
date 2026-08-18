@@ -1,10 +1,17 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CustomerBookingPage from './CustomerBookingPage';
 import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
-import { listServices, getAvailableSlots, bookAppointment } from '../lib/api';
-import { jerusalemAddDaysString } from '../lib/dates';
+import {
+  listServices,
+  getAvailableSlots,
+  bookAppointment,
+  loadPublicBookingCatalog,
+  loadPublicBookingSlots,
+  submitPublicBooking,
+} from '../lib/api';
+import { jerusalemAddDaysString, toTimeDisplay } from '../lib/dates';
 
 const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }));
 
@@ -17,6 +24,9 @@ vi.mock('../lib/api', () => ({
   listServices: vi.fn(),
   getAvailableSlots: vi.fn(),
   bookAppointment: vi.fn(),
+  loadPublicBookingCatalog: vi.fn(),
+  loadPublicBookingSlots: vi.fn(),
+  submitPublicBooking: vi.fn(),
 }));
 
 const mockServices = [
@@ -33,6 +43,15 @@ const renderPage = () =>
   render(
     <MemoryRouter>
       <CustomerBookingPage />
+    </MemoryRouter>
+  );
+
+const renderPublicPage = (businessSlug = 'happy-pets-demo') =>
+  render(
+    <MemoryRouter initialEntries={[`/book/${businessSlug}`]}>
+      <Routes>
+        <Route path="/book/:businessSlug" element={<CustomerBookingPage />} />
+      </Routes>
     </MemoryRouter>
   );
 
@@ -345,5 +364,81 @@ describe('CustomerBookingPage', () => {
       expect(screen.queryByRole('button', { name: '10:00' })).not.toBeInTheDocument();
     });
     expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('completes the business-slug journey through NestJS without Supabase calls', async () => {
+    const startsAt = `${visitDate}T07:00:00.000Z`;
+    const endsAt = `${visitDate}T08:00:00.000Z`;
+    const timezone = 'Asia/Jerusalem';
+    const publicService = {
+      id: 'service-1',
+      name: 'טיפוח מלא',
+      base_price: 125,
+      default_duration: 60,
+      currency: 'ILS',
+    };
+    const booking = {
+      appointment_id: 'appointment-1',
+      visit_date: visitDate,
+      start_time: startsAt,
+      end_time: endsAt,
+      total_duration: 60,
+      total_price: 125,
+    };
+    loadPublicBookingCatalog.mockResolvedValue({
+      business: { slug: 'happy-pets-demo', name: 'Happy Pets' },
+      location: { name: 'תל אביב', timezone },
+      services: [publicService],
+    });
+    loadPublicBookingSlots.mockResolvedValue([
+      { slot_start: startsAt, slot_end: endsAt },
+    ]);
+    submitPublicBooking.mockResolvedValue(booking);
+
+    renderPublicPage();
+
+    expect(
+      await screen.findByRole('heading', { name: 'הזמנת תור אצל Happy Pets' })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'לניהול תור קיים' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(publicService.name));
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+    const slotLabel = toTimeDisplay(startsAt, timezone);
+    fireEvent.click(await screen.findByRole('button', { name: slotLabel }));
+    fireEvent.change(screen.getByLabelText('שם פרטי'), { target: { value: 'דנה' } });
+    fireEvent.change(screen.getByLabelText('שם משפחה'), { target: { value: 'לוי' } });
+    fireEvent.change(screen.getByLabelText('טלפון'), {
+      target: { value: '050-1234567' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'אישור הזמנה' }));
+
+    await waitFor(() => {
+      expect(submitPublicBooking).toHaveBeenCalledWith('happy-pets-demo', {
+        firstName: 'דנה',
+        lastName: 'לוי',
+        phoneE164: '+972501234567',
+        visitDate,
+        startsAt,
+        serviceIds: ['service-1'],
+      });
+    });
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/book/happy-pets-demo/success',
+      {
+        state: {
+          booking,
+          serviceNames: ['טיפוח מלא'],
+          customerName: 'דנה לוי',
+          phone: '050-1234567',
+          bookingPath: '/book/happy-pets-demo',
+          timezone,
+        },
+      }
+    );
+    expect(listServices).not.toHaveBeenCalled();
+    expect(getAvailableSlots).not.toHaveBeenCalled();
+    expect(bookAppointment).not.toHaveBeenCalled();
   });
 });

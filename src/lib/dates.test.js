@@ -113,6 +113,12 @@ describe('toTimeDisplay', () => {
     expect(toTimeDisplay(undefined)).toBe('');
     expect(toTimeDisplay('')).toBe('');
   });
+
+  it('formats an API instant in the business timezone', () => {
+    expect(
+      toTimeDisplay('2030-01-07T07:45:00.000Z', 'Asia/Jerusalem')
+    ).toBe('09:45');
+  });
 });
 
 describe('formatHebrewDate', () => {

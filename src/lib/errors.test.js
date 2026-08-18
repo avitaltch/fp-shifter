@@ -4,6 +4,7 @@ import { friendlyError } from './errors';
 // Every code raised by supabase/functions.sql or lib/api must map to Hebrew.
 const CASES = [
   ['SLOT_TAKEN', 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.'],
+  ['PLAN_NO_LONGER_AVAILABLE', 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.'],
   ['SLOT_IN_PAST', 'לא ניתן לקבוע תור בזמן שכבר עבר.'],
   ['INVALID_NAME', 'נא להזין שם פרטי ושם משפחה.'],
   ['INVALID_PHONE', 'מספר הטלפון אינו תקין.'],
@@ -21,6 +22,10 @@ const CASES = [
   ['CANNOT_CHANGE_OWN_ROLE', 'לא ניתן לשנות את התפקיד של עצמך.'],
   ['FORBIDDEN_COLUMNS', 'אין הרשאה לעדכן שדות אלו.'],
   ['FORBIDDEN', 'אין לך הרשאה לבצע פעולה זו.'],
+  ['BUSINESS_NOT_FOUND', 'העסק המבוקש לא נמצא.'],
+  ['INVALID_SERVICE_SELECTION', 'אחד השירותים שנבחרו אינו זמין עוד. יש לרענן את הדף.'],
+  ['API_UNAVAILABLE', 'לא ניתן להתחבר למערכת כרגע. יש לנסות שוב מאוחר יותר.'],
+  ['INVALID_API_RESPONSE', 'התקבלה תשובה לא תקינה מהמערכת. יש לנסות שוב מאוחר יותר.'],
   ['Invalid login credentials', 'אימייל או סיסמה שגויים.'],
 ];
 
@@ -33,6 +38,15 @@ describe('friendlyError', () => {
     expect(friendlyError(new Error('P0001: SLOT_TAKEN'))).toBe(
       'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.'
     );
+  });
+
+  it('reads stable NestJS error metadata without relying on its English message', () => {
+    expect(
+      friendlyError({
+        code: 'PLAN_NO_LONGER_AVAILABLE',
+        message: 'The selected booking time is no longer available',
+      })
+    ).toBe('השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.');
   });
 
   it('returns the provided fallback for unknown errors', () => {

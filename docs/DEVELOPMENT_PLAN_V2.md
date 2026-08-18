@@ -173,7 +173,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R3 — Atomic booking and public booking vertical slice
 
 **Estimate:** 5–7 focused engineering days
-**Status:** In progress — atomic backend command and concurrency proof implemented; idempotency, management tokens, and frontend integration remain
+**Status:** In progress — atomic backend command, concurrency proof, and the public slug-based frontend journey are implemented; idempotency, management tokens, and a real-stack browser test remain
 **Goal:** Let a customer find and commit a real compound appointment through NestJS/PostgreSQL.
 
 **Backend work**
@@ -196,6 +196,12 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Display provider handoffs clearly without requiring the customer to choose staff unless configured.
 - Submit the selected plan and handle conflict refresh without losing customer input.
 - Replace the legacy phone-plus-appointment management lookup with the secure token flow.
+
+**Implemented checkpoint**
+
+- `/book/:businessSlug` loads the public catalog, searches compound availability, and commits through NestJS.
+- The adapter normalizes minor currency units, business-local ISO times, and Israeli E.164 phone input at the API boundary.
+- Browser coverage proves the slug journey makes no Supabase request; `/book` remains temporarily available for legacy regression coverage.
 
 **Exit gate**
 

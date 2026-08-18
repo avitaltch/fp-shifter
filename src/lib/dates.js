@@ -42,9 +42,21 @@ export function jerusalemAddDaysString(n) {
   return toDateString(new Date(y, m - 1, d + n));
 }
 
-/** "HH:MM" from a Postgres time value ("HH:MM:SS"). */
-export function toTimeDisplay(time) {
-  return time ? time.slice(0, 5) : '';
+/** "HH:MM" from a Postgres time or an ISO instant in a business timezone. */
+export function toTimeDisplay(time, timeZone) {
+  if (!time) return '';
+  if (timeZone && String(time).includes('T')) {
+    const instant = new Date(time);
+    if (!Number.isNaN(instant.getTime())) {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).format(instant);
+    }
+  }
+  return String(time).slice(0, 5);
 }
 
 /** Hebrew long date for a YYYY-MM-DD string (parsed as local, not UTC). */
