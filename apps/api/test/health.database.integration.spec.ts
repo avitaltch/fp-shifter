@@ -84,6 +84,7 @@ describe('AppModule with PostgreSQL', () => {
       {
         id: PET_TRIM_SERVICE_ID,
         name: 'Pet Trim',
+        description: 'Full pet grooming and trim',
         durationMinutes: 45,
         priceMinor: 12000,
         currency: 'ILS',
@@ -91,6 +92,7 @@ describe('AppModule with PostgreSQL', () => {
       {
         id: VACCINATION_SERVICE_ID,
         name: 'Vaccination',
+        description: 'Routine veterinarian vaccination',
         durationMinutes: 15,
         priceMinor: 8000,
         currency: 'ILS',
@@ -102,6 +104,7 @@ describe('AppModule with PostgreSQL', () => {
       {
         id: BEAUTY_SERVICE_ID,
         name: 'Haircut',
+        description: 'Compound Beauty haircut',
         durationMinutes: 45,
         priceMinor: 15000,
         currency: 'ILS',
@@ -117,6 +120,56 @@ describe('AppModule with PostgreSQL', () => {
       PET_TRIM_SERVICE_ID,
       VACCINATION_SERVICE_ID,
     ]);
+  });
+
+  it('returns a public business catalog without tenant identifiers', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/public/businesses/happy-pets-demo/catalog')
+      .expect('x-request-id', /.+/)
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          business: {
+            slug: 'happy-pets-demo',
+            name: 'Happy Pets Demo',
+            locale: 'he-IL',
+          },
+          location: {
+            name: 'Happy Pets — Tel Aviv',
+            address: null,
+            timezone: 'Asia/Jerusalem',
+          },
+        });
+        expect(body.services).toEqual([
+          {
+            id: PET_TRIM_SERVICE_ID,
+            name: 'Pet Trim',
+            description: 'Full pet grooming and trim',
+            durationMinutes: 45,
+            priceMinor: 12000,
+            currency: 'ILS',
+          },
+          {
+            id: VACCINATION_SERVICE_ID,
+            name: 'Vaccination',
+            description: 'Routine veterinarian vaccination',
+            durationMinutes: 15,
+            priceMinor: 8000,
+            currency: 'ILS',
+          },
+        ]);
+        expect(JSON.stringify(body)).not.toContain(HAPPY_PETS_BUSINESS_ID);
+        expect(JSON.stringify(body)).not.toContain(HAPPY_PETS_LOCATION_ID);
+      });
+  });
+
+  it('returns a typed not-found response for an unknown public catalog', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/public/businesses/missing-business/catalog')
+      .expect(404)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({ code: 'BUSINESS_NOT_FOUND' });
+      });
   });
 
   it('searches the seeded compound visit through the public API without exposing staff', async () => {

@@ -93,6 +93,16 @@ The seed is idempotent and currently creates two tenant fixtures:
 - `happy-pets-demo`
 - `compound-beauty-demo`
 
+Load the public business context and active service catalog in one request:
+
+```http
+GET /api/v1/public/businesses/happy-pets-demo/catalog
+```
+
+The response contains display-safe business and primary-location details plus
+active service snapshots. Internal tenant and location identifiers are not
+exposed.
+
 ## Current boundary
 
 Implemented:

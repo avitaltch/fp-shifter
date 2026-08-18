@@ -22,7 +22,11 @@ describe('PublicSchedulingRepository', () => {
     const context = {
       businessId: '00000000-0000-4000-8000-000000000001',
       businessSlug: 'happy-pets-demo',
+      businessName: 'Happy Pets Demo',
+      defaultLocale: 'he-IL',
       locationId: '00000000-0000-4000-8000-000000000101',
+      locationName: 'Happy Pets — Tel Aviv',
+      address: null,
       timezone: 'Asia/Jerusalem',
     };
     query.mockResolvedValue({ rows: [context] });
@@ -34,6 +38,8 @@ describe('PublicSchedulingRepository', () => {
       expect.stringContaining('where b.slug = $1'),
       [context.businessSlug],
     );
+    expect(query.mock.calls[0]?.[0]).toContain('b.default_locale');
+    expect(query.mock.calls[0]?.[0]).toContain('l.address');
     expect(query.mock.calls[0]?.[0]).not.toContain('password');
   });
 

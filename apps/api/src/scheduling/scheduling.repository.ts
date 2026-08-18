@@ -18,6 +18,7 @@ export class SchedulingRepository {
       scope,
       `select id,
               name::text as name,
+              description,
               duration_minutes as "durationMinutes",
               price_minor as "priceMinor",
               currency

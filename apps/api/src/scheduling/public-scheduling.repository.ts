@@ -13,7 +13,11 @@ export class PublicSchedulingRepository {
     const result = await this.pool.query<PublicBusinessSchedulingContext>(
       `select b.id as "businessId",
               b.slug::text as "businessSlug",
+              b.name as "businessName",
+              b.default_locale as "defaultLocale",
               l.id as "locationId",
+              l.name as "locationName",
+              l.address,
               l.timezone
        from businesses b
        join locations l on l.business_id = b.id
