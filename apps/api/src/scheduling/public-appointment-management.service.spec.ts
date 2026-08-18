@@ -42,6 +42,7 @@ describe('PublicAppointmentManagementService', () => {
     directory = {
       findBusinessBySlug: vi.fn().mockResolvedValue({
         businessId: BUSINESS_ID,
+        businessName: 'Happy Pets Demo',
         timezone: 'Asia/Jerusalem',
       }),
     };
@@ -113,6 +114,7 @@ describe('PublicAppointmentManagementService', () => {
   it('does not allow a valid token to cross business boundaries', async () => {
     directory.findBusinessBySlug.mockResolvedValue({
       businessId: '00000000-0000-4000-8000-000000000002',
+      businessName: 'Other Business',
       timezone: 'Asia/Jerusalem',
     });
     appointments.find.mockResolvedValue(null);

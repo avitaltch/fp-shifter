@@ -4,6 +4,7 @@ import {
   type TenantTransaction,
 } from '../database/tenant-database.service';
 import type { TenantScope } from '../tenancy/tenant-scope';
+import { NotificationOutboxRepository } from '../notifications/notification-outbox.repository';
 import {
   AppointmentCancellationNotAllowedError,
   AppointmentCancellationTooLateError,
@@ -23,11 +24,21 @@ interface ManagedAppointmentRow {
   totalPriceMinor: number;
   currency: string;
   customerFirstName: string;
+  customerEmail: string | null;
+  customerPhoneE164: string;
+}
+
+export interface AppointmentNotificationContext {
+  businessName: string;
+  timezone: string;
 }
 
 @Injectable()
 export class AppointmentManagementRepository {
-  constructor(private readonly database: TenantDatabaseService) {}
+  constructor(
+    private readonly database: TenantDatabaseService,
+    private readonly notifications: NotificationOutboxRepository,
+  ) {}
 
   async find(
     scope: TenantScope,
@@ -47,6 +58,7 @@ export class AppointmentManagementRepository {
   async cancel(
     scope: TenantScope,
     managementTokenHash: string,
+    notificationContext: AppointmentNotificationContext,
     now = new Date(),
   ): Promise<ManagedAppointment> {
     return this.database.transaction(scope, async (transaction) => {
@@ -88,10 +100,28 @@ export class AppointmentManagementRepository {
            and status in ('Scheduled', 'InProgress')`,
         [now, appointment.appointmentId],
       );
-      return this.withSteps(transaction, {
+      const cancelledAppointment = await this.withSteps(transaction, {
         ...appointment,
         status: 'Cancelled',
       });
+      await this.notifications.handleCancellation(transaction, {
+        appointmentId: appointment.appointmentId,
+        cancelledAt: now,
+        startsAt: appointment.startsAt,
+        endsAt: appointment.endsAt,
+        businessName: notificationContext.businessName,
+        timezone: notificationContext.timezone,
+        customerFirstName: appointment.customerFirstName,
+        customerEmail: appointment.customerEmail,
+        customerPhoneE164: appointment.customerPhoneE164,
+        steps: cancelledAppointment.steps.map((step) => ({
+          sequenceNumber: step.sequenceNumber,
+          serviceName: step.serviceName,
+          startsAt: step.startsAt,
+          endsAt: step.endsAt,
+        })),
+      });
+      return cancelledAppointment;
     });
   }
 
@@ -107,7 +137,9 @@ export class AppointmentManagementRepository {
               a.ends_at as "endsAt",
               a.total_price_minor as "totalPriceMinor",
               a.currency,
-              c.first_name as "customerFirstName"
+              c.first_name as "customerFirstName",
+              c.email::text as "customerEmail",
+              c.phone_e164 as "customerPhoneE164"
        from appointments a
        join customers c
          on c.business_id = a.business_id

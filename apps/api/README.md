@@ -95,6 +95,31 @@ Services:
 - OpenAPI UI: `http://127.0.0.1:3000/api/docs`
 - Liveness: `GET /api/v1/health/live`
 - Readiness: `GET /api/v1/health/ready`
+- Notification worker: PostgreSQL-backed process with no public port
+
+## Local notifications
+
+Bookings enqueue confirmation and reminder jobs in the same PostgreSQL
+transaction as the appointment. Compound visits also enqueue an owner/manager
+handoff notification. The worker claims due jobs with `FOR UPDATE SKIP LOCKED`,
+recovers expired leases, retries with bounded exponential backoff, and creates a
+configured fallback-channel job only after terminal delivery failure.
+
+Development uses the deterministic local provider for Email, SMS, and WhatsApp.
+No external account or network call is required. Inspect rendered deliveries
+with:
+
+```sql
+select channel, recipient, subject, body, created_at
+from notification_fake_deliveries
+order by created_at desc;
+```
+
+The reminder policy schedules a seven-day reminder for bookings made at least
+30 days in advance, plus 24-hour and one-hour reminders when that much lead time
+remains. Cancelling an appointment atomically cancels every unsent notification
+for the old appointment state and enqueues customer and manager cancellation
+messages.
 
 Published development ports bind to `127.0.0.1`. The default password in `compose.mvp.yaml` is only for an isolated local machine. Copy `.env.mvp.example`, replace the password, and keep PostgreSQL unexposed before using any shared environment.
 
@@ -144,6 +169,7 @@ Implemented:
 - atomic compound booking command with PostgreSQL concurrency protection;
 - tenant-scoped booking idempotency with concurrent replay protection;
 - expiring, revocable customer-management tokens with appointment cancellation;
+- PostgreSQL notification outbox, reminder policy, local provider, retries, lease recovery, and channel fallback;
 - unit/controller/HTTP endpoint tests;
 - real AppModule/PostgreSQL readiness and seed integration coverage;
 - CI migration rollback and reapply validation.
@@ -153,4 +179,5 @@ Not implemented yet:
 - authentication endpoints;
 - tenant guards;
 - configuration endpoints for services, provider skills and availability;
-- notification worker and waitlist.
+- waitlist and cancellation backfill;
+- real email, SMS, and WhatsApp provider adapters.

@@ -7,6 +7,9 @@ export interface ApplicationEnvironment {
   DATABASE_URL: string;
   MANAGEMENT_TOKEN_SECRET: string;
   MANAGEMENT_TOKEN_TTL_DAYS: number;
+  NOTIFICATION_WORKER_BATCH_SIZE: number;
+  NOTIFICATION_WORKER_LEASE_SECONDS: number;
+  NOTIFICATION_WORKER_POLL_MS: number;
   CORS_ORIGINS: string;
   SWAGGER_ENABLED: boolean;
 }
@@ -103,6 +106,27 @@ export function validateEnvironment(
       'MANAGEMENT_TOKEN_TTL_DAYS',
       1,
       3_650,
+    ),
+    NOTIFICATION_WORKER_BATCH_SIZE: parseInteger(
+      environment.NOTIFICATION_WORKER_BATCH_SIZE,
+      50,
+      'NOTIFICATION_WORKER_BATCH_SIZE',
+      1,
+      500,
+    ),
+    NOTIFICATION_WORKER_LEASE_SECONDS: parseInteger(
+      environment.NOTIFICATION_WORKER_LEASE_SECONDS,
+      300,
+      'NOTIFICATION_WORKER_LEASE_SECONDS',
+      10,
+      3_600,
+    ),
+    NOTIFICATION_WORKER_POLL_MS: parseInteger(
+      environment.NOTIFICATION_WORKER_POLL_MS,
+      1_000,
+      'NOTIFICATION_WORKER_POLL_MS',
+      100,
+      60_000,
     ),
     CORS_ORIGINS: corsOrigins,
     SWAGGER_ENABLED: parseBoolean(

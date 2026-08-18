@@ -1,10 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnvironment } from './config/environment';
-import { HealthModule } from './health/health.module';
-import { ObservabilityModule } from './observability/observability.module';
 import { NotificationsModule } from './notifications/notifications.module';
-import { SchedulingModule } from './scheduling/scheduling.module';
 
 @Module({
   imports: [
@@ -13,10 +10,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
       cache: true,
       validate: validateEnvironment,
     }),
-    ObservabilityModule,
-    HealthModule,
     NotificationsModule,
-    SchedulingModule,
   ],
 })
-export class AppModule {}
+export class WorkerModule {}

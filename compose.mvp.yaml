@@ -59,6 +59,29 @@ services:
       timeout: 3s
       retries: 20
 
+  worker:
+    build:
+      context: ./apps/api
+    command: ["npm", "run", "start:worker"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    environment:
+      NODE_ENV: development
+      API_HOST: 0.0.0.0
+      API_PORT: 3000
+      DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
+      CORS_ORIGINS: ${MVP_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      SWAGGER_ENABLED: "false"
+      MANAGEMENT_TOKEN_SECRET: ${MVP_MANAGEMENT_TOKEN_SECRET:?set MVP_MANAGEMENT_TOKEN_SECRET}
+      MANAGEMENT_TOKEN_TTL_DAYS: ${MVP_MANAGEMENT_TOKEN_TTL_DAYS:-365}
+      NOTIFICATION_WORKER_BATCH_SIZE: ${MVP_NOTIFICATION_WORKER_BATCH_SIZE:-50}
+      NOTIFICATION_WORKER_LEASE_SECONDS: ${MVP_NOTIFICATION_WORKER_LEASE_SECONDS:-300}
+      NOTIFICATION_WORKER_POLL_MS: ${MVP_NOTIFICATION_WORKER_POLL_MS:-1000}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   seed:
     profiles: ["tools"]
     build:

@@ -18,6 +18,9 @@ describe('validateEnvironment', () => {
       DATABASE_URL: 'postgres://user:password@localhost:5432/shiftsync',
       MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
       MANAGEMENT_TOKEN_TTL_DAYS: 365,
+      NOTIFICATION_WORKER_BATCH_SIZE: 50,
+      NOTIFICATION_WORKER_LEASE_SECONDS: 300,
+      NOTIFICATION_WORKER_POLL_MS: 1_000,
       CORS_ORIGINS: 'http://localhost:5173,http://127.0.0.1:5173',
       SWAGGER_ENABLED: true,
     });
@@ -101,6 +104,20 @@ describe('validateEnvironment', () => {
         MANAGEMENT_TOKEN_TTL_DAYS: 0,
       }),
     ).toThrow('MANAGEMENT_TOKEN_TTL_DAYS must be an integer between 1 and 3650');
+  });
+
+  it.each([
+    ['NOTIFICATION_WORKER_BATCH_SIZE', 0, 1, 500],
+    ['NOTIFICATION_WORKER_LEASE_SECONDS', 9, 10, 3_600],
+    ['NOTIFICATION_WORKER_POLL_MS', 60_001, 100, 60_000],
+  ])('validates %s bounds', (key, value, minimum, maximum) => {
+    expect(() =>
+      validateEnvironment({
+        DATABASE_URL: 'postgres://localhost/shiftsync',
+        MANAGEMENT_TOKEN_SECRET: managementTokenSecret,
+        [key]: value,
+      }),
+    ).toThrow(`${key} must be an integer between ${minimum} and ${maximum}`);
   });
 });
 

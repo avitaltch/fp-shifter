@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { BookingRepository } from './booking.repository';
 import { AppointmentManagementRepository } from './appointment-management.repository';
 import { ManagementTokenService } from './management-token.service';
@@ -15,7 +16,7 @@ import { PublicSchedulingRepository } from './public-scheduling.repository';
 import { SchedulingRepository } from './scheduling.repository';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, NotificationsModule],
   controllers: [
     PublicCatalogController,
     PublicAvailabilityController,

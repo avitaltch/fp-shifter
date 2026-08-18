@@ -6,6 +6,8 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApplication } from '../src/bootstrap';
+import { NotificationWorkerService } from '../src/notifications/notification-worker.service';
+import { NotificationWorkerRepository } from '../src/notifications/notification-worker.repository';
 import { SchedulingRepository } from '../src/scheduling/scheduling.repository';
 import { TenantScope } from '../src/tenancy/tenant-scope';
 
@@ -22,6 +24,8 @@ describe('AppModule with PostgreSQL', () => {
   let app: INestApplication;
   let databaseClient: Client;
   let schedulingRepository: SchedulingRepository;
+  let notificationWorker: NotificationWorkerService;
+  let notificationWorkerRepository: NotificationWorkerRepository;
 
   beforeAll(async () => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -36,6 +40,8 @@ describe('AppModule with PostgreSQL', () => {
     configureApplication(app, { corsOrigins: [], enableSwagger: false });
     await app.init();
     schedulingRepository = app.get(SchedulingRepository);
+    notificationWorker = app.get(NotificationWorkerService);
+    notificationWorkerRepository = app.get(NotificationWorkerRepository);
 
     databaseClient = new Client({ connectionString: databaseUrl });
     await databaseClient.connect();
@@ -371,6 +377,376 @@ describe('AppModule with PostgreSQL', () => {
       .expect(({ body }) => {
         expect(body).toMatchObject({ code: 'INVALID_IDEMPOTENCY_KEY' });
       });
+  });
+
+  it('schedules reminders transactionally and delivers due jobs exactly once locally', async () => {
+    const phoneE164 = '+972501230093';
+    const notes = `integration-notifications-${Date.now()}`;
+    const idempotencyKey = randomUUID();
+
+    try {
+      await databaseClient.query(
+        `insert into business_notification_policies (business_id, manager_channel)
+         values ($1, 'WhatsApp')
+         on conflict (business_id) do update
+         set manager_channel = excluded.manager_channel`,
+        [HAPPY_PETS_BUSINESS_ID],
+      );
+      const bookingResponse = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({
+          date: '2030-01-07',
+          startsAt: '2030-01-07T12:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID, VACCINATION_SERVICE_ID],
+          customer: {
+            firstName: 'Notification',
+            lastName: 'Test',
+            email: 'notification@example.test',
+            phoneE164,
+          },
+          notes,
+        })
+        .expect(201);
+      const appointmentId = bookingResponse.body.appointmentId;
+      const managementToken = bookingResponse.body.managementToken;
+
+      const jobs = await databaseClient.query<{
+        kind: string;
+        channel: string;
+        recipient: string;
+        scheduledFor: Date;
+        status: string;
+        payload: {
+          services: { providerName?: string }[];
+        };
+      }>(
+        `select kind::text,
+                channel::text,
+                recipient,
+                scheduled_for as "scheduledFor",
+                status::text,
+                payload
+         from notification_jobs
+         where business_id = $1
+           and appointment_id = $2
+         order by scheduled_for, kind`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(jobs.rows.map(({ kind }) => kind).sort()).toEqual([
+        'BookingConfirmation',
+        'ManagerCompoundVisit',
+        'Reminder1h',
+        'Reminder24h',
+        'Reminder7d',
+      ]);
+      expect(
+        jobs.rows.find(({ kind }) => kind === 'Reminder7d')?.scheduledFor,
+      ).toEqual(new Date('2029-12-31T12:00:00.000Z'));
+      expect(
+        jobs.rows.find(({ kind }) => kind === 'Reminder24h')?.scheduledFor,
+      ).toEqual(new Date('2030-01-06T12:00:00.000Z'));
+      expect(
+        jobs.rows.find(({ kind }) => kind === 'Reminder1h')?.scheduledFor,
+      ).toEqual(new Date('2030-01-07T11:00:00.000Z'));
+      expect(
+        jobs.rows.find(({ kind }) => kind === 'ManagerCompoundVisit')?.payload
+          .services,
+      ).toEqual([
+        expect.objectContaining({ providerName: 'Dana Groomer' }),
+        expect.objectContaining({ providerName: 'Noa Veterinarian' }),
+      ]);
+      expect(
+        jobs.rows.find(({ kind }) => kind === 'ManagerCompoundVisit'),
+      ).toMatchObject({
+        channel: 'WhatsApp',
+        recipient: '+972501110001',
+      });
+
+      await expect(notificationWorker.runOnce()).resolves.toMatchObject({
+        claimed: 2,
+        sent: 2,
+      });
+      await expect(notificationWorker.runOnce()).resolves.toMatchObject({
+        claimed: 0,
+        sent: 0,
+      });
+      const firstDeliveries = await databaseClient.query<{ count: number }>(
+        `select count(*)::integer as count
+         from notification_fake_deliveries
+         where business_id = $1
+           and notification_job_id in (
+             select id from notification_jobs
+             where business_id = $1 and appointment_id = $2
+           )`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(firstDeliveries.rows[0]?.count).toBe(2);
+
+      await request(app.getHttpServer())
+        .post(
+          '/api/v1/public/businesses/happy-pets-demo/appointments/manage/cancel',
+        )
+        .set('Authorization', `Bearer ${managementToken}`)
+        .expect(200);
+
+      const postCancellationJobs = await databaseClient.query<{
+        kind: string;
+        status: string;
+      }>(
+        `select kind::text, status::text
+         from notification_jobs
+         where business_id = $1
+           and appointment_id = $2
+         order by kind`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(
+        postCancellationJobs.rows
+          .filter(({ kind }) => kind.startsWith('Reminder'))
+          .map(({ status }) => status),
+      ).toEqual(['Cancelled', 'Cancelled', 'Cancelled']);
+      expect(postCancellationJobs.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'CustomerCancellation',
+            status: 'Pending',
+          }),
+          expect.objectContaining({
+            kind: 'ManagerCancellation',
+            status: 'Pending',
+          }),
+        ]),
+      );
+
+      await expect(notificationWorker.runOnce()).resolves.toMatchObject({
+        claimed: 2,
+        sent: 2,
+      });
+      await expect(notificationWorker.runOnce()).resolves.toMatchObject({
+        claimed: 0,
+      });
+      const finalDeliveries = await databaseClient.query<{ count: number }>(
+        `select count(*)::integer as count
+         from notification_fake_deliveries
+         where business_id = $1
+           and notification_job_id in (
+             select id from notification_jobs
+             where business_id = $1 and appointment_id = $2
+           )`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(finalDeliveries.rows[0]?.count).toBe(4);
+    } finally {
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1
+           and idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, idempotencyKey],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1
+           and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+      await databaseClient.query(
+        `delete from business_notification_policies where business_id = $1`,
+        [HAPPY_PETS_BUSINESS_ID],
+      );
+    }
+  });
+
+  it('recovers an abandoned lease and creates one fallback after terminal failure', async () => {
+    const phoneE164 = '+972501230092';
+    const email = 'fallback@example.test';
+    const notes = `integration-notification-retry-${Date.now()}`;
+    const idempotencyKey = randomUUID();
+
+    try {
+      await databaseClient.query(
+        `insert into business_notification_policies
+           (business_id, customer_primary_channel, customer_fallback_channel)
+         values ($1, 'Sms', 'Email')
+         on conflict (business_id) do update
+         set customer_primary_channel = excluded.customer_primary_channel,
+             customer_fallback_channel = excluded.customer_fallback_channel`,
+        [HAPPY_PETS_BUSINESS_ID],
+      );
+      const bookingResponse = await request(app.getHttpServer())
+        .post('/api/v1/public/businesses/happy-pets-demo/bookings')
+        .set('Idempotency-Key', idempotencyKey)
+        .send({
+          date: '2030-01-07',
+          startsAt: '2030-01-07T12:00:00.000Z',
+          serviceIds: [PET_TRIM_SERVICE_ID],
+          customer: {
+            firstName: 'Fallback',
+            lastName: 'Test',
+            email,
+            phoneE164,
+          },
+          notes,
+        })
+        .expect(201);
+      const appointmentId = bookingResponse.body.appointmentId;
+      await databaseClient.query(
+        `update notification_jobs
+         set max_attempts = 3
+         where business_id = $1
+           and appointment_id = $2
+           and kind = 'BookingConfirmation'`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+
+      const firstClaimAt = new Date(Date.now() + 1_000);
+      const firstClaim = await notificationWorkerRepository.claim(
+        'abandoned-worker',
+        10,
+        300,
+        firstClaimAt,
+      );
+      expect(firstClaim).toHaveLength(1);
+      expect(firstClaim[0]).toMatchObject({
+        kind: 'BookingConfirmation',
+        attemptCount: 1,
+        fallbackChannel: 'Email',
+        fallbackRecipient: email,
+      });
+
+      const recoveredAt = new Date(firstClaimAt.getTime() + 301_000);
+      const recoveredClaim = await notificationWorkerRepository.claim(
+        'recovery-worker',
+        10,
+        300,
+        recoveredAt,
+      );
+      const recoveredJob = recoveredClaim[0];
+      expect(recoveredJob).toMatchObject({
+        id: firstClaim[0]?.id,
+        attemptCount: 2,
+        lockedBy: 'recovery-worker',
+      });
+      if (!recoveredJob) throw new Error('Recovered notification job is missing');
+      const secondAttemptFinishedAt = new Date(recoveredAt.getTime() + 10);
+      await expect(
+        notificationWorkerRepository.markFailed(
+          recoveredJob,
+          new Error('temporary provider failure'),
+          recoveredAt,
+          secondAttemptFinishedAt,
+        ),
+      ).resolves.toBe('RetryScheduled');
+      const retryAt = new Date(secondAttemptFinishedAt.getTime() + 60_000);
+      await expect(
+        notificationWorkerRepository.claim(
+          'early-worker',
+          10,
+          300,
+          new Date(retryAt.getTime() - 1),
+        ),
+      ).resolves.toEqual([]);
+      const finalClaim = await notificationWorkerRepository.claim(
+        'terminal-worker',
+        10,
+        300,
+        retryAt,
+      );
+      const terminalJob = finalClaim[0];
+      expect(terminalJob).toMatchObject({
+        id: recoveredJob.id,
+        attemptCount: 3,
+      });
+      if (!terminalJob) throw new Error('Terminal notification job is missing');
+      const terminalAttemptFinishedAt = new Date(retryAt.getTime() + 10);
+      await expect(
+        notificationWorkerRepository.markFailed(
+          terminalJob,
+          new Error('definitive provider failure'),
+          retryAt,
+          terminalAttemptFinishedAt,
+        ),
+      ).resolves.toBe('Failed');
+
+      const fallback = await databaseClient.query<{
+        channel: string;
+        recipient: string;
+        status: string;
+        idempotencyKey: string;
+      }>(
+        `select channel::text,
+                recipient,
+                status::text,
+                idempotency_key as "idempotencyKey"
+         from notification_jobs
+         where business_id = $1
+           and appointment_id = $2
+           and idempotency_key like '%:fallback:Email'`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(fallback.rows).toEqual([
+        expect.objectContaining({
+          channel: 'Email',
+          recipient: email,
+          status: 'Pending',
+        }),
+      ]);
+
+      await expect(
+        notificationWorker.runOnce(
+          new Date(terminalAttemptFinishedAt.getTime() + 1_000),
+        ),
+      ).resolves.toMatchObject({ claimed: 1, sent: 1 });
+      await expect(
+        notificationWorker.runOnce(
+          new Date(terminalAttemptFinishedAt.getTime() + 2_000),
+        ),
+      ).resolves.toMatchObject({ claimed: 0 });
+      const audit = await databaseClient.query<{
+        failedAttempts: number;
+        fallbackDeliveries: number;
+      }>(
+        `select
+           (select count(*)::integer
+            from notification_attempts na
+            join notification_jobs nj
+              on nj.business_id = na.business_id
+             and nj.id = na.notification_job_id
+            where nj.business_id = $1
+              and nj.appointment_id = $2
+              and na.status = 'Failed') as "failedAttempts",
+           (select count(*)::integer
+            from notification_fake_deliveries d
+            join notification_jobs nj
+              on nj.business_id = d.business_id
+             and nj.id = d.notification_job_id
+            where nj.business_id = $1
+              and nj.appointment_id = $2
+              and d.channel = 'Email') as "fallbackDeliveries"`,
+        [HAPPY_PETS_BUSINESS_ID, appointmentId],
+      );
+      expect(audit.rows[0]).toEqual({
+        failedAttempts: 2,
+        fallbackDeliveries: 1,
+      });
+    } finally {
+      await databaseClient.query(
+        `delete from appointments
+         where business_id = $1
+           and idempotency_key = $2`,
+        [HAPPY_PETS_BUSINESS_ID, idempotencyKey],
+      );
+      await databaseClient.query(
+        `delete from customers
+         where business_id = $1
+           and phone_e164 = $2`,
+        [HAPPY_PETS_BUSINESS_ID, phoneE164],
+      );
+      await databaseClient.query(
+        `delete from business_notification_policies where business_id = $1`,
+        [HAPPY_PETS_BUSINESS_ID],
+      );
+    }
   });
 
   it('manages a booking with an expiring, revocable, tenant-scoped bearer token', async () => {

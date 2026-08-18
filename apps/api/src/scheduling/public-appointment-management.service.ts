@@ -42,13 +42,16 @@ export class PublicAppointmentManagementService {
     businessSlug: string,
     authorization: string | undefined,
   ): Promise<PublicManagedAppointmentResponseDto> {
-    const { scope, tokenHash, timezone } = await this.resolveAccess(
+    const { scope, tokenHash, timezone, businessName } = await this.resolveAccess(
       businessSlug,
       authorization,
     );
     try {
       return serializeAppointment(
-        await this.appointments.cancel(scope, tokenHash),
+        await this.appointments.cancel(scope, tokenHash, {
+          businessName,
+          timezone,
+        }),
         timezone,
       );
     } catch (error) {
@@ -71,7 +74,12 @@ export class PublicAppointmentManagementService {
   private async resolveAccess(
     businessSlug: string,
     authorization: string | undefined,
-  ): Promise<{ scope: TenantScope; tokenHash: string; timezone: string }> {
+  ): Promise<{
+    scope: TenantScope;
+    tokenHash: string;
+    timezone: string;
+    businessName: string;
+  }> {
     const token = readBearerToken(authorization);
     if (!token) throw appointmentNotFound();
     const context = await this.directory.findBusinessBySlug(businessSlug);
@@ -80,6 +88,7 @@ export class PublicAppointmentManagementService {
       scope: TenantScope.forBusiness(context.businessId),
       tokenHash: this.tokens.hash(token),
       timezone: context.timezone,
+      businessName: context.businessName,
     };
   }
 }

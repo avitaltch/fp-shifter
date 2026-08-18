@@ -26,18 +26,21 @@ const fixtures = {
     {
       id: '00000000-0000-4000-8000-000000000201',
       email: 'groomer@happy-pets.demo',
+      phone: '+972501110001',
       firstName: 'Dana',
       lastName: 'Groomer',
     },
     {
       id: '00000000-0000-4000-8000-000000000202',
       email: 'vet@happy-pets.demo',
+      phone: '+972501110002',
       firstName: 'Noa',
       lastName: 'Veterinarian',
     },
     {
       id: '00000000-0000-4000-8000-000000000203',
       email: 'stylist@compound-beauty.demo',
+      phone: '+972501110003',
       firstName: 'Maya',
       lastName: 'Stylist',
     },
@@ -47,16 +50,19 @@ const fixtures = {
       id: '00000000-0000-4000-8000-000000000301',
       businessId: '00000000-0000-4000-8000-000000000001',
       userId: '00000000-0000-4000-8000-000000000201',
+      role: 'Owner',
     },
     {
       id: '00000000-0000-4000-8000-000000000302',
       businessId: '00000000-0000-4000-8000-000000000001',
       userId: '00000000-0000-4000-8000-000000000202',
+      role: 'Provider',
     },
     {
       id: '00000000-0000-4000-8000-000000000303',
       businessId: '00000000-0000-4000-8000-000000000002',
       userId: '00000000-0000-4000-8000-000000000203',
+      role: 'Owner',
     },
   ],
   services: [
@@ -256,14 +262,15 @@ async function seed() {
     for (const user of fixtures.users) {
       await client.query(
         `insert into users
-           (id, email, password_hash, first_name, last_name)
-         values ($1, $2, '!demo-account-disabled', $3, $4)
+           (id, email, password_hash, first_name, last_name, phone_e164)
+         values ($1, $2, '!demo-account-disabled', $3, $4, $5)
          on conflict (id) do update
          set email = excluded.email,
              first_name = excluded.first_name,
              last_name = excluded.last_name,
+             phone_e164 = excluded.phone_e164,
              disabled_at = null`,
-        [user.id, user.email, user.firstName, user.lastName],
+        [user.id, user.email, user.firstName, user.lastName, user.phone],
       );
     }
 
@@ -271,12 +278,17 @@ async function seed() {
       await client.query(
         `insert into business_memberships
            (id, business_id, user_id, role)
-         values ($1, $2, $3, 'Provider')
+         values ($1, $2, $3, $4)
          on conflict (id) do update
          set business_id = excluded.business_id,
              user_id = excluded.user_id,
              role = excluded.role`,
-        [membership.id, membership.businessId, membership.userId],
+        [
+          membership.id,
+          membership.businessId,
+          membership.userId,
+          membership.role,
+        ],
       );
     }
 

@@ -4,6 +4,7 @@ import {
   type TenantTransaction,
 } from '../database/tenant-database.service';
 import type { TenantScope } from '../tenancy/tenant-scope';
+import { NotificationOutboxRepository } from '../notifications/notification-outbox.repository';
 import {
   findCompoundAppointmentPlans,
   localDateRangeToInstants,
@@ -34,6 +35,7 @@ interface CustomerRow {
 
 interface AppointmentRow {
   id: string;
+  createdAt: Date;
 }
 
 interface IdempotentAppointmentRow {
@@ -55,7 +57,10 @@ interface IdempotentAppointmentStepRow {
 
 @Injectable()
 export class BookingRepository {
-  constructor(private readonly database: TenantDatabaseService) {}
+  constructor(
+    private readonly database: TenantDatabaseService,
+    private readonly notifications: NotificationOutboxRepository,
+  ) {}
 
   async create(
     scope: TenantScope,
@@ -236,7 +241,7 @@ export class BookingRepository {
           idempotency_request_fingerprint, management_token_hash,
           management_token_expires_at)
        values ($1, $2, $3, 'Confirmed', $4, $5, $6, $7, $8, $9, $10, $11, $12)
-       returning id`,
+       returning id, created_at as "createdAt"`,
       [
         context.locationId,
         customerId,
@@ -251,8 +256,9 @@ export class BookingRepository {
         command.managementTokenExpiresAt,
       ],
     );
-    const appointmentId = appointmentRows[0]?.id;
-    if (!appointmentId) throw new Error('Appointment insert did not return an ID');
+    const appointment = appointmentRows[0];
+    if (!appointment) throw new Error('Appointment insert did not return an ID');
+    const appointmentId = appointment.id;
 
     for (const step of plan.steps) {
       const service = selectedServices[step.sequenceNumber - 1];
@@ -279,6 +285,29 @@ export class BookingRepository {
         ],
       );
     }
+
+    await this.notifications.enqueueBooking(transaction, {
+      appointmentId,
+      appointmentCreatedAt: appointment.createdAt,
+      startsAt: plan.startsAt,
+      endsAt: plan.endsAt,
+      businessName: context.businessName,
+      timezone: context.timezone,
+      customerFirstName: command.customer.firstName,
+      customerEmail: command.customer.email,
+      customerPhoneE164: command.customer.phoneE164,
+      steps: plan.steps.map((step) => {
+        const service = selectedServices[step.sequenceNumber - 1];
+        if (!service) throw new Error('Notification service snapshot is missing');
+        return {
+          sequenceNumber: step.sequenceNumber,
+          serviceName: service.name,
+          providerUserId: step.providerUserId,
+          startsAt: step.startsAt,
+          endsAt: step.endsAt,
+        };
+      }),
+    });
 
     return {
       appointmentId,

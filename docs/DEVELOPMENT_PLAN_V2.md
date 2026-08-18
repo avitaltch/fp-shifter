@@ -65,10 +65,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Tenant membership guards and authenticated scope resolution.
 - Authentication and role authorization.
 - Configuration APIs for services, provider skills, working hours, and exceptions.
-- Ordered multi-provider availability engine.
-- Atomic booking and customer management tokens.
 - Manager and provider operational APIs.
-- Reminder/outbox worker.
 - Waitlist and cancellation backfill.
 - Real notification adapters and pilot operations.
 
@@ -173,7 +170,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R3 — Atomic booking and public booking vertical slice
 
 **Estimate:** 5–7 focused engineering days
-**Status:** In progress — atomic booking, idempotency, concurrency proof, and the public slug-based frontend journey are implemented; management tokens and a real-stack browser test remain
+**Status:** In progress — atomic booking, idempotency, management tokens, cancellation, concurrency proof, and the public slug-based frontend journey are implemented; a real-stack browser test remains
 **Goal:** Let a customer find and commit a real compound appointment through NestJS/PostgreSQL.
 
 **Backend work**
@@ -257,6 +254,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R6 — PostgreSQL outbox, reminders, and manager notifications
 
 **Estimate:** 5–7 focused engineering days
+**Status:** In progress — transactional intent, reminder policy, fake providers, worker leases, retries, failure audit, and fallback are implemented locally
 **Goal:** Prove notification behavior locally before paying for delivery providers.
 
 **Work**
@@ -279,6 +277,14 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Time-based tests prove each reminder rule at boundary conditions.
 - Rescheduling/cancellation invalidates outdated reminders.
 - The manager notification contains the complete provider handoff plan.
+
+**Implemented checkpoint**
+
+- Booking and cancellation transactions create or invalidate notification jobs atomically.
+- PostgreSQL claims bounded batches with `FOR UPDATE SKIP LOCKED` and recovers expired worker leases.
+- The one-week, 24-hour, and one-hour rules have deterministic boundary coverage.
+- Local Email, SMS, and WhatsApp delivery is idempotent and fully audited without an external account.
+- Bounded exponential retry, terminal failure, and configured fallback-channel behavior are covered against real PostgreSQL.
 
 ### R7 — Waitlist and cancellation backfill
 
