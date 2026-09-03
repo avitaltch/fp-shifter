@@ -1,5 +1,4 @@
-// Maps RPC/API error codes (raised in supabase/functions.sql and lib/api.js)
-// to Hebrew user-facing messages.
+// Maps stable backend/adapter error codes to Hebrew user-facing messages.
 const MESSAGES = {
   SLOT_TAKEN: 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.',
   PLAN_NO_LONGER_AVAILABLE: 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.',
@@ -35,6 +34,9 @@ const MESSAGES = {
   DUPLICATE_WAITLIST_ENTRY: 'כבר קיימת בקשת המתנה פעילה עבור השירותים והתאריך האלה.',
   WAITLIST_OFFER_EXPIRED: 'הזמן שהוצע כבר אינו שמור. נמשיך לעדכן אותך כשיתפנה זמן נוסף.',
   WAITLIST_OFFER_NOT_FOUND: 'קישור ההמתנה אינו תקין או שכבר נעשה בו שימוש.',
+  INVALID_CREDENTIALS: 'אימייל או סיסמה שגויים.',
+  AUTH_RATE_LIMITED: 'בוצעו יותר מדי ניסיונות התחברות. יש להמתין ולנסות שוב.',
+  INVALID_REFRESH_SESSION: 'החיבור פג. יש להתחבר מחדש.',
   'Invalid login credentials': 'אימייל או סיסמה שגויים.',
 };
 

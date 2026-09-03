@@ -18,8 +18,10 @@ import {
 import { BusinessSlugParamsDto } from './dto/business-slug-params.dto';
 import { PublicManagedAppointmentResponseDto } from './dto/public-managed-appointment-response.dto';
 import { PublicAppointmentManagementService } from './public-appointment-management.service';
+import { Public } from '../auth/auth.decorators';
 
 @ApiTags('public appointment management')
+@Public()
 @ApiHeader({
   name: 'Authorization',
   description: 'Bearer management token returned when the booking was created',

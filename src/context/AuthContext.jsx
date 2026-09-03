@@ -8,6 +8,7 @@ export const AuthContext = createContext({
   profileError: false,
   accountDisabled: false,
   retryProfile: () => {},
+  signIn: async () => {},
   signOut: () => {},
 });
 

@@ -10,3 +10,4 @@ export * from './dashboard';
 export * from './team';
 export * from './nest/client';
 export * from './nest/publicScheduling';
+export * from './nest/auth';

@@ -11,8 +11,10 @@ import { BusinessSlugParamsDto } from './dto/business-slug-params.dto';
 import { PublicAvailabilityResponseDto } from './dto/public-availability-response.dto';
 import { SearchPublicAvailabilityDto } from './dto/search-public-availability.dto';
 import { PublicAvailabilityService } from './public-availability.service';
+import { Public } from '../auth/auth.decorators';
 
 @ApiTags('public availability')
+@Public()
 @Controller({
   path: 'public/businesses/:businessSlug/availability',
   version: '1',

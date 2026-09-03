@@ -29,6 +29,7 @@ describe('requestNestApi', () => {
         headers: { Accept: 'application/json' },
         body: undefined,
         signal: undefined,
+        credentials: undefined,
       }
     );
   });

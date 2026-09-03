@@ -28,6 +28,7 @@ jobs:
       DATABASE_URL: postgres://shiftsync:shiftsync_ci@127.0.0.1:5432/shiftsync_test
       MANAGEMENT_TOKEN_SECRET: ci-only-management-token-secret-at-least-32-bytes
       MANAGEMENT_TOKEN_TTL_DAYS: 365
+      AUTH_TOKEN_SECRET: ci-only-auth-token-secret-different-and-at-least-32-bytes
       NOTIFICATION_WORKER_BATCH_SIZE: 50
       NOTIFICATION_WORKER_LEASE_SECONDS: 300
       NOTIFICATION_WORKER_POLL_MS: 1000

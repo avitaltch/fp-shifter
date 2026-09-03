@@ -6,7 +6,7 @@
 
 ## Current result
 
-No critical findings were identified. The two high-risk findings from the baseline review are remediated or reduced below high severity by the current checkpoint. Two medium deployment hardening items remain in the production-readiness backlog.
+No critical findings were identified. The two high-risk findings from the baseline review are remediated or reduced below high severity by the current checkpoint. One medium deployment hardening item remains in the production-readiness backlog.
 
 | ID | Severity | Finding | Status |
 |---|---|---|---|
@@ -14,7 +14,7 @@ No critical findings were identified. The two high-risk findings from the baseli
 | SEC-02 | High | An anonymous request using an existing phone number could overwrite the stored customer name/email and redirect communication. | Fixed: anonymous booking never updates an existing profile and notification routing uses the stored customer identity. |
 | SEC-03 | Medium | A long-lived appointment-management capability is stored in browser `sessionStorage`, increasing XSS impact. | Fixed: public confirmations persist only non-capability details; waitlist and management fragments are validated, captured only in memory, and removed from the address bar before API use. |
 | SEC-04 | Medium | Compose processes currently share the PostgreSQL bootstrap owner. | Open: define migration and least-privilege runtime roles before deployment; deployment target is intentionally undecided. |
-| SEC-05 | Medium | The frontend Nginx configuration does not send a Content Security Policy. | Open: add and exercise a restrictive CSP before real customer data. |
+| SEC-05 | Medium | The frontend Nginx configuration does not send a Content Security Policy. | Fixed in configuration: Nginx now denies framing/plugins, restricts scripts to same-origin, and limits other resource types; the production smoke test must verify the emitted header on the eventual deployment target. |
 | SEC-06 | Medium | Development/build dependencies had high-severity advisories while production dependency audits were clean. | Fixed: compatible transitive dependencies were refreshed; complete frontend and API audits now report zero vulnerabilities. |
 
 ## Positive controls observed
@@ -26,6 +26,8 @@ No critical findings were identified. The two high-risk findings from the baseli
 - Appointment-management tokens are stored as hashes, expire, and can be revoked.
 - Waitlist offer capabilities are purpose-separated, hashed, single-effect, and expire after five minutes by default.
 - Browser capability handoff is fragment-only, validated by purpose, removed from the address bar, sent to the API only in authorization headers after explicit customer confirmation, and excluded from persistent browser storage.
+- Staff passwords use Argon2id; refresh sessions rotate as hashed opaque capabilities, replay revokes active sessions, and protected requests re-resolve the current tenant membership and role from PostgreSQL.
+- Authentication entry points use durable IP/email quotas with generic invalid-credential responses and keyed audit identities.
 - PostgreSQL exclusion constraints remain the final double-booking authority.
 
 ## Verification required at every checkpoint
@@ -33,4 +35,4 @@ No critical findings were identified. The two high-risk findings from the baseli
 - Add negative tests for every new public, authenticated, and tenant-owned path.
 - Review new persistence for tenant scoping, atomicity, sensitive-data handling, and bounded resource use.
 - Run production dependency audits, unit/integration tests, migration rollback/reapply, and a focused DRY pass.
-- Do not mark the production-readiness security gate complete while SEC-04 and SEC-05 remain open.
+- Do not mark the production-readiness security gate complete while SEC-04 remains open and the configured CSP has not been smoke-tested on the eventual deployment target.

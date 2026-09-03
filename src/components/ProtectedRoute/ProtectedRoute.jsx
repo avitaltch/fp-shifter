@@ -3,8 +3,8 @@ import { useAuth } from '../../context/AuthContext';
 import PageContainer from '../PageContainer/PageContainer';
 import LoadingSpinner from '../LoadingSpinner/LoadingSpinner';
 
-// UI-level gate only — real enforcement is the RLS in supabase/rls.sql.
-// The role comes from public.users via AuthContext, not user_metadata.
+// This client-side gate is for navigation only. NestJS guards enforce the
+// authenticated membership and role again for every protected API request.
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { session, role, loading, profileError, accountDisabled, retryProfile, signOut } =
     useAuth();

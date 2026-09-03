@@ -5,6 +5,7 @@ import { HealthModule } from './health/health.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
       validate: validateEnvironment,
     }),
     ObservabilityModule,
+    AuthModule,
     HealthModule,
     NotificationsModule,
     SchedulingModule,

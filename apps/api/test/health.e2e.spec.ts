@@ -44,6 +44,9 @@ describe('Health endpoints', () => {
   it('GET /api/v1/health/live', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/health/live')
+      .expect('x-content-type-options', 'nosniff')
+      .expect('x-frame-options', 'DENY')
+      .expect('referrer-policy', 'no-referrer')
       .expect(200)
       .expect(({ body }) => {
         if (body.status !== 'ok' || body.service !== 'shiftsync-api') {

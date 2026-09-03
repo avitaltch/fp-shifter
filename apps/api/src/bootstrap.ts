@@ -14,6 +14,22 @@ export function configureApplication(
   app: INestApplication,
   options: ApplicationBootstrapOptions,
 ): void {
+  app.use(
+    (
+      _request: unknown,
+      response: { setHeader(name: string, value: string): void },
+      next: () => void,
+    ) => {
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      response.setHeader('X-Frame-Options', 'DENY');
+      response.setHeader('Referrer-Policy', 'no-referrer');
+      response.setHeader(
+        'Permissions-Policy',
+        'camera=(), microphone=(), geolocation=()',
+      );
+      next();
+    },
+  );
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI });
   app.enableShutdownHooks();
@@ -37,6 +53,15 @@ export function configureApplication(
         .setTitle('ShiftSync API')
         .setDescription('Compound scheduling API for ShiftSync')
         .setVersion('1.0')
+        .addBearerAuth(
+          { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+          'access-token',
+        )
+        .addCookieAuth(
+          'shiftsync_refresh',
+          { type: 'apiKey', in: 'cookie', name: 'shiftsync_refresh' },
+          'refresh-cookie',
+        )
         .build(),
     );
     SwaggerModule.setup('api/docs', app, document);

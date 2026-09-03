@@ -1,115 +1,111 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import {
+  clearStaffAccessToken,
+  loginStaff,
+  logoutStaff,
+  refreshStaffSession,
+} from '../lib/api';
 import { AuthContext } from './AuthContext';
 
-// Single source of truth for auth. The role comes from public.users (enforced
-// by RLS) — NOT from user_metadata, which any user can edit themselves.
+function toFrontendAuth(session) {
+  const backendRole = session.business.role;
+  const role = backendRole === 'Provider' ? 'Employee' : 'Admin';
+  return {
+    session: {
+      user: { id: session.user.id, email: session.user.email },
+      business: session.business,
+      expiresInSeconds: session.expiresInSeconds,
+    },
+    profile: {
+      id: session.user.id,
+      first_name: session.user.firstName,
+      last_name: session.user.lastName,
+      role,
+      membership_role: backendRole,
+      business_id: session.business.id,
+      business_slug: session.business.slug,
+    },
+    role,
+  };
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
+  const [auth, setAuth] = useState({ session: null, profile: null, role: null });
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
   const [accountDisabled, setAccountDisabled] = useState(false);
-  const profileRequestIdRef = useRef(0);
+  const mountedRef = useRef(true);
 
-  // A failed profile fetch must be distinguishable from "not logged in":
-  // otherwise a network/RLS hiccup silently bounces the user off protected
-  // routes with no explanation.
-  const loadProfile = useCallback(async (currentSession, isCancelled = () => false) => {
-    const requestId = ++profileRequestIdRef.current;
-    const canCommit = () => !isCancelled() && requestId === profileRequestIdRef.current;
-
-    if (!currentSession) {
-      if (canCommit()) {
-        setProfile(null);
-        setProfileError(false);
-        setLoading(false);
-      }
-      return;
-    }
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, role, phone, deleted_at')
-      .eq('id', currentSession.user.id)
-      .single();
-    if (!canCommit()) return;
-    // Soft-deleted (deactivated) staff must not keep a usable session.
-    if (!error && data?.deleted_at) {
-      setProfile(null);
-      setProfileError(false);
-      setAccountDisabled(true);
-      setLoading(false);
-      supabase.auth.signOut();
-      return;
-    }
-    setProfile(error ? null : data);
-    setProfileError(Boolean(error));
-    if (!error) setAccountDisabled(false);
-    setLoading(false);
+  const applySession = useCallback((session) => {
+    if (!mountedRef.current) return;
+    setAuth(toFrontendAuth(session));
+    setProfileError(false);
+    setAccountDisabled(false);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    let lastProfileUserId = Symbol('uninitialized');
-    const isCancelled = () => cancelled;
+  const clearSession = useCallback(() => {
+    clearStaffAccessToken();
+    if (mountedRef.current) setAuth({ session: null, profile: null, role: null });
+  }, []);
 
-    const synchronizeSession = (currentSession) => {
-      if (cancelled) return;
-      setSession(currentSession);
-      const userId = currentSession?.user?.id ?? null;
-      if (userId === lastProfileUserId) return;
-      lastProfileUserId = userId;
-      loadProfile(currentSession, isCancelled);
-    };
-
-    const handleSessionError = (error) => {
-      if (cancelled) return;
-      console.error('Failed to initialize auth session:', error);
-      profileRequestIdRef.current += 1;
-      setSession(null);
-      setProfile(null);
-      setProfileError(true);
-      setLoading(false);
-    };
-
-    supabase.auth
-      .getSession()
-      .then(({ data: { session: currentSession }, error }) => {
-        if (error) handleSessionError(error);
-        else synchronizeSession(currentSession);
-      })
-      .catch(handleSessionError);
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      synchronizeSession(currentSession);
-    });
-
-    return () => {
-      cancelled = true;
-      subscription.unsubscribe();
-    };
-  }, [loadProfile]);
-
-  const retryProfile = useCallback(() => {
+  const restoreSession = useCallback(async () => {
     setLoading(true);
-    loadProfile(session);
-  }, [loadProfile, session]);
+    try {
+      applySession(await refreshStaffSession());
+    } catch (error) {
+      clearSession();
+      if (mountedRef.current) {
+        const isAnonymous = error?.status === 401;
+        setProfileError(!isAnonymous);
+        setAccountDisabled(error?.code === 'ACCOUNT_DISABLED');
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [applySession, clearSession]);
 
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  };
+  useEffect(() => {
+    mountedRef.current = true;
+    restoreSession();
+    return () => {
+      mountedRef.current = false;
+    };
+  }, [restoreSession]);
+
+  useEffect(() => {
+    if (!auth.session?.expiresInSeconds) return undefined;
+    const delay = Math.max(1_000, (auth.session.expiresInSeconds - 60) * 1_000);
+    const timer = window.setTimeout(() => {
+      refreshStaffSession().then(applySession).catch(clearSession);
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [applySession, auth.session, clearSession]);
+
+  const signIn = useCallback(
+    async (email, password, businessSlug) => {
+      const session = await loginStaff({
+        email: email.trim().toLowerCase(),
+        password,
+        ...(businessSlug ? { businessSlug } : {}),
+      });
+      applySession(session);
+      return toFrontendAuth(session);
+    },
+    [applySession]
+  );
+
+  const signOut = useCallback(async () => {
+    await logoutStaff();
+    clearSession();
+  }, [clearSession]);
 
   const value = {
-    session,
-    profile,
-    role: profile?.role ?? null,
+    ...auth,
     loading,
     profileError,
     accountDisabled,
-    retryProfile,
+    retryProfile: restoreSession,
+    signIn,
     signOut,
   };
 

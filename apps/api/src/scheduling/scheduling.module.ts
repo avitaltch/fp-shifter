@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SecurityModule } from '../security/security.module';
 import { BookingRepository } from './booking.repository';
 import { CustomerRepository } from './customer.repository';
 import { AppointmentManagementRepository } from './appointment-management.repository';
@@ -23,7 +24,7 @@ import { WaitlistOfferTokenService } from './waitlist-offer-token.service';
 import { WaitlistWorkerService } from './waitlist-worker.service';
 
 @Module({
-  imports: [DatabaseModule, NotificationsModule],
+  imports: [DatabaseModule, NotificationsModule, SecurityModule],
   controllers: [
     PublicCatalogController,
     PublicAvailabilityController,

@@ -7,8 +7,10 @@ import {
 } from '@nestjs/swagger';
 import { HealthStatusDto } from './dto/health-status.dto';
 import { HealthService } from './health.service';
+import { Public } from '../auth/auth.decorators';
 
 @ApiTags('health')
+@Public()
 @Controller({ path: 'health', version: '1' })
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}

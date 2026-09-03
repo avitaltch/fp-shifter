@@ -1,419 +1,142 @@
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { useAuth } from './AuthContext';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearStaffAccessToken,
+  loginStaff,
+  logoutStaff,
+  refreshStaffSession,
+} from '../lib/api';
 import { AuthProvider } from './AuthProvider';
-import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn(),
-      onAuthStateChange: vi.fn(),
-      signOut: vi.fn(),
-    },
-    from: vi.fn(),
-  },
+vi.mock('../lib/api', () => ({
+  clearStaffAccessToken: vi.fn(),
+  loginStaff: vi.fn(),
+  logoutStaff: vi.fn(),
+  refreshStaffSession: vi.fn(),
 }));
 
+const ownerSession = {
+  accessToken: 'access-token',
+  expiresInSeconds: 900,
+  user: {
+    id: 'user-1',
+    email: 'owner@example.com',
+    firstName: 'דנה',
+    lastName: 'לוי',
+  },
+  business: {
+    id: 'business-1',
+    slug: 'happy-pets-demo',
+    role: 'Owner',
+  },
+};
+
 function Probe() {
-  const {
-    session,
-    profile,
-    role,
-    loading,
-    profileError,
-    accountDisabled,
-    retryProfile,
-    signOut,
-  } = useAuth();
+  const auth = useAuth();
   return (
     <div>
-      <div data-testid="loading">{String(loading)}</div>
-      <div data-testid="session">{session?.user?.id ?? 'none'}</div>
-      <div data-testid="role">{role ?? 'none'}</div>
-      <div data-testid="name">
-        {profile ? `${profile.first_name} ${profile.last_name}` : 'none'}
-      </div>
-      <div data-testid="profile-error">{String(profileError)}</div>
-      <div data-testid="account-disabled">{String(accountDisabled)}</div>
-      <button type="button" onClick={retryProfile}>
-        retry
+      <div data-testid="loading">{String(auth.loading)}</div>
+      <div data-testid="session">{auth.session?.user?.id ?? 'none'}</div>
+      <div data-testid="role">{auth.role ?? 'none'}</div>
+      <div data-testid="membership-role">{auth.profile?.membership_role ?? 'none'}</div>
+      <div data-testid="profile-error">{String(auth.profileError)}</div>
+      <button type="button" onClick={() => auth.signIn(' OWNER@example.com ', 'secret')}>
+        sign-in
       </button>
-      <button type="button" onClick={() => signOut().catch(() => {})}>
+      <button type="button" onClick={() => auth.signOut()}>
         sign-out
       </button>
+      <button type="button" onClick={auth.retryProfile}>retry</button>
     </div>
   );
 }
 
-function mockUsersSingle(result) {
-  const single = vi.fn().mockResolvedValue(result);
-  const eq = vi.fn().mockReturnValue({ single });
-  const select = vi.fn().mockReturnValue({ eq });
-  supabase.from.mockReturnValue({ select });
-  return { select, eq, single };
+function renderProvider() {
+  return render(
+    <AuthProvider>
+      <Probe />
+    </AuthProvider>
+  );
 }
 
-describe('AuthContext', () => {
-  let authChangeCb;
-  let unsubscribe;
-
+describe('AuthProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    unsubscribe = vi.fn();
-    authChangeCb = null;
-    supabase.auth.onAuthStateChange.mockImplementation((cb) => {
-      authChangeCb = cb;
-      return { data: { subscription: { unsubscribe } } };
-    });
-    supabase.auth.signOut.mockResolvedValue({ error: null });
+    refreshStaffSession.mockResolvedValue(ownerSession);
+    loginStaff.mockResolvedValue(ownerSession);
+    logoutStaff.mockResolvedValue(undefined);
   });
 
-  it('loads the session and profile from public.users (not user_metadata)', async () => {
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    mockUsersSingle({
-      data: { id: 'user-1', first_name: 'דנה', last_name: 'לוי', role: 'Admin' },
-      error: null,
-    });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
+  it('restores the HttpOnly refresh session and maps owner roles for transitional UI', async () => {
+    renderProvider();
 
     expect(screen.getByTestId('loading')).toHaveTextContent('true');
-
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
     });
     expect(screen.getByTestId('session')).toHaveTextContent('user-1');
     expect(screen.getByTestId('role')).toHaveTextContent('Admin');
-    expect(screen.getByTestId('name')).toHaveTextContent('דנה לוי');
+    expect(screen.getByTestId('membership-role')).toHaveTextContent('Owner');
     expect(screen.getByTestId('profile-error')).toHaveTextContent('false');
-    expect(screen.getByTestId('account-disabled')).toHaveTextContent('false');
-    expect(supabase.from).toHaveBeenCalledWith('users');
   });
 
-  it('selects deleted_at so deactivated accounts can be detected', async () => {
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    const chain = mockUsersSingle({
-      data: { id: 'user-1', first_name: 'דנה', last_name: 'לוי', role: 'Admin', deleted_at: null },
-      error: null,
-    });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('loading')).toHaveTextContent('false');
-    });
-    expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('deleted_at'));
-  });
-
-  it('signs out and flags a soft-deleted (deactivated) account', async () => {
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    mockUsersSingle({
-      data: {
-        id: 'user-1',
-        first_name: 'דנה',
-        last_name: 'לוי',
-        role: 'Employee',
-        deleted_at: '2026-07-01T00:00:00Z',
-      },
-      error: null,
-    });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('account-disabled')).toHaveTextContent('true');
-    });
-    expect(screen.getByTestId('role')).toHaveTextContent('none');
-    expect(screen.getByTestId('name')).toHaveTextContent('none');
-    expect(screen.getByTestId('profile-error')).toHaveTextContent('false');
-    expect(screen.getByTestId('loading')).toHaveTextContent('false');
-    expect(supabase.auth.signOut).toHaveBeenCalled();
-  });
-
-  it('clears the disabled flag when an active profile loads afterwards', async () => {
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    const single = vi
-      .fn()
-      .mockResolvedValueOnce({
-        data: { id: 'user-1', role: 'Employee', deleted_at: '2026-07-01T00:00:00Z' },
-        error: null,
-      })
-      .mockResolvedValueOnce({
-        data: { id: 'user-2', first_name: 'יוסי', last_name: 'כהן', role: 'Employee', deleted_at: null },
-        error: null,
-      });
-    const eq = vi.fn().mockReturnValue({ single });
-    const select = vi.fn().mockReturnValue({ eq });
-    supabase.from.mockReturnValue({ select });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('account-disabled')).toHaveTextContent('true');
-    });
-
-    await act(async () => {
-      authChangeCb('SIGNED_IN', { user: { id: 'user-2' } });
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('account-disabled')).toHaveTextContent('false');
-    });
-    expect(screen.getByTestId('role')).toHaveTextContent('Employee');
-  });
-
-  it('clears profile and stops loading when there is no session', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
+  it('treats a missing refresh cookie as anonymous, not a profile outage', async () => {
+    refreshStaffSession.mockRejectedValue({ status: 401 });
+    renderProvider();
 
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
     });
     expect(screen.getByTestId('session')).toHaveTextContent('none');
-    expect(screen.getByTestId('role')).toHaveTextContent('none');
     expect(screen.getByTestId('profile-error')).toHaveTextContent('false');
-    expect(supabase.from).not.toHaveBeenCalled();
+    expect(clearStaffAccessToken).toHaveBeenCalled();
   });
 
-  it('sets profileError when the users row fetch fails (does not look logged-out)', async () => {
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    mockUsersSingle({ data: null, error: new Error('RLS') });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
+  it('surfaces API restoration errors and retries', async () => {
+    refreshStaffSession
+      .mockRejectedValueOnce({ code: 'API_UNAVAILABLE' })
+      .mockResolvedValueOnce(ownerSession);
+    renderProvider();
 
     await waitFor(() => {
       expect(screen.getByTestId('profile-error')).toHaveTextContent('true');
     });
-    expect(screen.getByTestId('session')).toHaveTextContent('user-1');
-    expect(screen.getByTestId('role')).toHaveTextContent('none');
-    expect(screen.getByTestId('loading')).toHaveTextContent('false');
-  });
-
-  it('retryProfile reloads the profile after a failure', async () => {
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    const single = vi
-      .fn()
-      .mockResolvedValueOnce({ data: null, error: new Error('timeout') })
-      .mockResolvedValueOnce({
-        data: { id: 'user-1', first_name: 'דנה', last_name: 'לוי', role: 'Employee' },
-        error: null,
-      });
-    const eq = vi.fn().mockReturnValue({ single });
-    const select = vi.fn().mockReturnValue({ eq });
-    supabase.from.mockReturnValue({ select });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('profile-error')).toHaveTextContent('true');
-    });
-
     fireEvent.click(screen.getByRole('button', { name: 'retry' }));
-
     await waitFor(() => {
-      expect(screen.getByTestId('profile-error')).toHaveTextContent('false');
+      expect(screen.getByTestId('session')).toHaveTextContent('user-1');
     });
-    expect(screen.getByTestId('role')).toHaveTextContent('Employee');
-    expect(single).toHaveBeenCalledTimes(2);
   });
 
-  it('reacts to onAuthStateChange (e.g. sign-in from another tab)', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    mockUsersSingle({
-      data: { id: 'user-2', first_name: 'יוסי', last_name: 'כהן', role: 'Employee' },
-      error: null,
+  it('normalizes sign-in email and maps providers to the existing staff UI', async () => {
+    refreshStaffSession.mockRejectedValue({ status: 401 });
+    loginStaff.mockResolvedValue({
+      ...ownerSession,
+      business: { ...ownerSession.business, role: 'Provider' },
     });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
+    renderProvider();
     await waitFor(() => {
       expect(screen.getByTestId('loading')).toHaveTextContent('false');
     });
-
-    await act(async () => {
-      authChangeCb('SIGNED_IN', { user: { id: 'user-2' } });
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'sign-in' }));
 
     await waitFor(() => {
-      expect(screen.getByTestId('session')).toHaveTextContent('user-2');
-    });
-    expect(screen.getByTestId('role')).toHaveTextContent('Employee');
-  });
-
-  it('does not reload the profile when INITIAL_SESSION repeats the same user', async () => {
-    const currentSession = { user: { id: 'user-1' } };
-    supabase.auth.getSession.mockResolvedValue({ data: { session: currentSession } });
-    mockUsersSingle({
-      data: { id: 'user-1', first_name: 'דנה', last_name: 'לוי', role: 'Employee' },
-      error: null,
-    });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-    await waitFor(() => expect(screen.getByTestId('role')).toHaveTextContent('Employee'));
-
-    await act(async () => {
-      authChangeCb('INITIAL_SESSION', currentSession);
-    });
-    expect(supabase.from).toHaveBeenCalledTimes(1);
-  });
-
-  it('ignores a stale profile response after sign-out', async () => {
-    let resolveProfile;
-    const pendingProfile = new Promise((resolve) => { resolveProfile = resolve; });
-    supabase.auth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1' } } },
-    });
-    const single = vi.fn().mockReturnValue(pendingProfile);
-    supabase.from.mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({ single }),
-      }),
-    });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-    await waitFor(() => expect(single).toHaveBeenCalled());
-
-    await act(async () => {
-      authChangeCb('SIGNED_OUT', null);
-    });
-    expect(screen.getByTestId('session')).toHaveTextContent('none');
-
-    await act(async () => {
-      resolveProfile({
-        data: { id: 'user-1', first_name: 'ישן', last_name: 'משתמש', role: 'Admin' },
-        error: null,
+      expect(loginStaff).toHaveBeenCalledWith({
+        email: 'owner@example.com',
+        password: 'secret',
       });
-      await pendingProfile;
     });
-    expect(screen.getByTestId('role')).toHaveTextContent('none');
-    expect(screen.getByTestId('name')).toHaveTextContent('none');
+    expect(screen.getByTestId('role')).toHaveTextContent('Employee');
   });
 
-  it('stops loading when session initialization rejects', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    supabase.auth.getSession.mockRejectedValue(new Error('storage unavailable'));
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
+  it('revokes the server session before clearing local auth state', async () => {
+    renderProvider();
     await waitFor(() => {
-      expect(screen.getByTestId('loading')).toHaveTextContent('false');
+      expect(screen.getByTestId('session')).toHaveTextContent('user-1');
     });
-    expect(screen.getByTestId('profile-error')).toHaveTextContent('true');
-  });
-
-  it('signOut delegates to supabase.auth.signOut', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('loading')).toHaveTextContent('false');
-    });
-
     fireEvent.click(screen.getByRole('button', { name: 'sign-out' }));
-    await waitFor(() => {
-      expect(supabase.auth.signOut).toHaveBeenCalled();
-    });
-  });
 
-  it('signOut throws when supabase reports an error so callers can react', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-    supabase.auth.signOut.mockResolvedValue({ error: new Error('network down') });
-
-    let capturedSignOut;
-    function Capture() {
-      capturedSignOut = useAuth().signOut;
-      return null;
-    }
-
-    render(
-      <AuthProvider>
-        <Capture />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(capturedSignOut).toBeDefined();
-    });
-    await expect(capturedSignOut()).rejects.toThrow('network down');
-  });
-
-  it('unsubscribes from auth changes on unmount', async () => {
-    supabase.auth.getSession.mockResolvedValue({ data: { session: null } });
-
-    const { unmount } = render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByTestId('loading')).toHaveTextContent('false');
-    });
-
-    unmount();
-    expect(unsubscribe).toHaveBeenCalled();
+    await waitFor(() => expect(logoutStaff).toHaveBeenCalled());
+    expect(screen.getByTestId('session')).toHaveTextContent('none');
   });
 });

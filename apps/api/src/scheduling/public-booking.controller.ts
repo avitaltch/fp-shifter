@@ -12,8 +12,10 @@ import { BusinessSlugParamsDto } from './dto/business-slug-params.dto';
 import { CreatePublicBookingDto } from './dto/create-public-booking.dto';
 import { PublicBookingResponseDto } from './dto/public-booking-response.dto';
 import { PublicBookingService } from './public-booking.service';
+import { Public } from '../auth/auth.decorators';
 
 @ApiTags('public bookings')
+@Public()
 @Controller({ path: 'public/businesses/:businessSlug/bookings', version: '1' })
 export class PublicBookingController {
   constructor(private readonly bookings: PublicBookingService) {}

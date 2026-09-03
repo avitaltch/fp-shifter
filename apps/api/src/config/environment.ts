@@ -7,6 +7,12 @@ export interface ApplicationEnvironment {
   DATABASE_URL: string;
   MANAGEMENT_TOKEN_SECRET: string;
   MANAGEMENT_TOKEN_TTL_DAYS: number;
+  AUTH_TOKEN_SECRET: string;
+  AUTH_ACCESS_TOKEN_TTL_SECONDS: number;
+  AUTH_REFRESH_TOKEN_TTL_DAYS: number;
+  AUTH_LOGIN_IP_LIMIT: number;
+  AUTH_LOGIN_EMAIL_LIMIT: number;
+  AUTH_LOGIN_WINDOW_SECONDS: number;
   PUBLIC_BOOKING_IP_LIMIT: number;
   PUBLIC_BOOKING_IP_WINDOW_SECONDS: number;
   PUBLIC_BOOKING_CONTACT_LIMIT: number;
@@ -90,6 +96,28 @@ export function validateEnvironment(
   if (Buffer.byteLength(managementTokenSecret, 'utf8') < 32) {
     throw new Error('MANAGEMENT_TOKEN_SECRET must be at least 32 bytes');
   }
+  const configuredAuthSecret = environment.AUTH_TOKEN_SECRET;
+  if (
+    nodeEnvironment === 'production' &&
+    (typeof configuredAuthSecret !== 'string' || configuredAuthSecret.trim() === '')
+  ) {
+    throw new Error('AUTH_TOKEN_SECRET is required in production');
+  }
+  const authTokenSecret =
+    typeof configuredAuthSecret === 'string' && configuredAuthSecret.trim()
+      ? configuredAuthSecret.trim()
+      : managementTokenSecret;
+  if (Buffer.byteLength(authTokenSecret, 'utf8') < 32) {
+    throw new Error('AUTH_TOKEN_SECRET must be at least 32 bytes');
+  }
+  if (
+    nodeEnvironment === 'production' &&
+    authTokenSecret === managementTokenSecret
+  ) {
+    throw new Error(
+      'AUTH_TOKEN_SECRET must be different from MANAGEMENT_TOKEN_SECRET in production',
+    );
+  }
 
   const apiHost = String(environment.API_HOST ?? '0.0.0.0').trim();
   if (!apiHost) throw new Error('API_HOST is required');
@@ -111,6 +139,42 @@ export function validateEnvironment(
       'MANAGEMENT_TOKEN_TTL_DAYS',
       1,
       3_650,
+    ),
+    AUTH_TOKEN_SECRET: authTokenSecret,
+    AUTH_ACCESS_TOKEN_TTL_SECONDS: parseInteger(
+      environment.AUTH_ACCESS_TOKEN_TTL_SECONDS,
+      900,
+      'AUTH_ACCESS_TOKEN_TTL_SECONDS',
+      60,
+      3_600,
+    ),
+    AUTH_REFRESH_TOKEN_TTL_DAYS: parseInteger(
+      environment.AUTH_REFRESH_TOKEN_TTL_DAYS,
+      30,
+      'AUTH_REFRESH_TOKEN_TTL_DAYS',
+      1,
+      365,
+    ),
+    AUTH_LOGIN_IP_LIMIT: parseInteger(
+      environment.AUTH_LOGIN_IP_LIMIT,
+      20,
+      'AUTH_LOGIN_IP_LIMIT',
+      1,
+      1_000,
+    ),
+    AUTH_LOGIN_EMAIL_LIMIT: parseInteger(
+      environment.AUTH_LOGIN_EMAIL_LIMIT,
+      5,
+      'AUTH_LOGIN_EMAIL_LIMIT',
+      1,
+      1_000,
+    ),
+    AUTH_LOGIN_WINDOW_SECONDS: parseInteger(
+      environment.AUTH_LOGIN_WINDOW_SECONDS,
+      900,
+      'AUTH_LOGIN_WINDOW_SECONDS',
+      60,
+      86_400,
     ),
     PUBLIC_BOOKING_IP_LIMIT: parseInteger(
       environment.PUBLIC_BOOKING_IP_LIMIT,

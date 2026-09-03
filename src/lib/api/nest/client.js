@@ -28,6 +28,7 @@ export async function requestNestApi(
     signal,
     apiBaseUrl,
     headers: requestHeaders = {},
+    credentials,
     fetchImpl = globalThis.fetch,
   } = {}
 ) {
@@ -44,6 +45,7 @@ export async function requestNestApi(
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
+      credentials,
     });
   } catch (cause) {
     if (cause?.name === 'AbortError') throw cause;

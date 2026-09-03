@@ -9,8 +9,10 @@ import {
 import { BusinessSlugParamsDto } from './dto/business-slug-params.dto';
 import { PublicCatalogResponseDto } from './dto/public-catalog-response.dto';
 import { PublicCatalogService } from './public-catalog.service';
+import { Public } from '../auth/auth.decorators';
 
 @ApiTags('public catalog')
+@Public()
 @Controller({
   path: 'public/businesses/:businessSlug/catalog',
   version: '1',

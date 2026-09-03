@@ -19,11 +19,27 @@ npm run api:test
 npm run api:build
 ```
 
+Provision the first self-hosted owner without enabling public registration. The
+command reads the password from the process environment rather than a positional
+argument and stores only an Argon2id hash (inject the environment values through
+your local secret mechanism in a real deployment):
+
+```bash
+DATABASE_URL=postgres://... \
+OWNER_BUSINESS_SLUG=happy-pets-demo \
+OWNER_EMAIL=owner@example.com \
+OWNER_PASSWORD='use-a-long-unique-password' \
+OWNER_FIRST_NAME=Dana \
+OWNER_LAST_NAME=Owner \
+npm run auth:create-owner
+```
+
 The database integration suite uses the real AppModule and requires a migrated, seeded PostgreSQL database:
 
 ```bash
 DATABASE_URL=postgres://shiftsync:shiftsync_local@127.0.0.1:54320/shiftsync \
   MANAGEMENT_TOKEN_SECRET=replace-with-at-least-32-random-bytes \
+  AUTH_TOKEN_SECRET=use-a-distinct-auth-secret-at-least-32-bytes \
   NODE_ENV=test \
   SWAGGER_ENABLED=false \
 npm run api:test:integration
@@ -192,12 +208,13 @@ Implemented:
 - PostgreSQL notification outbox, reminder policy, local provider, retries, lease recovery, and channel fallback;
 - unit/controller/HTTP endpoint tests;
 - real AppModule/PostgreSQL readiness and seed integration coverage;
+- self-hosted Argon2id staff authentication, rotating PostgreSQL refresh sessions, and default-deny access/role guards;
+- durable keyed login quotas, authentication audit events, and first-owner provisioning;
+- sequential waitlist backfill with expiring compound holds and single-use claims;
 - CI migration rollback and reapply validation.
 
 Not implemented yet:
 
-- authentication endpoints;
-- tenant guards;
 - configuration endpoints for services, provider skills and availability;
-- waitlist and cancellation backfill;
+- manager/provider operational endpoints and migration of their legacy data adapters;
 - real email, SMS, and WhatsApp provider adapters.

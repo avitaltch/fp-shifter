@@ -23,8 +23,10 @@ import { CreatePublicWaitlistEntryDto } from './dto/create-public-waitlist-entry
 import { PublicWaitlistEntryResponseDto } from './dto/public-waitlist-entry-response.dto';
 import { PublicWaitlistService } from './public-waitlist.service';
 import { PublicBookingResponseDto } from './dto/public-booking-response.dto';
+import { Public } from '../auth/auth.decorators';
 
 @ApiTags('public waitlist')
+@Public()
 @Controller({ path: 'public/businesses/:businessSlug/waitlist', version: '1' })
 export class PublicWaitlistController {
   constructor(private readonly waitlist: PublicWaitlistService) {}

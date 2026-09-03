@@ -11,6 +11,7 @@ import { NotificationWorkerRepository } from '../src/notifications/notification-
 import { SchedulingRepository } from '../src/scheduling/scheduling.repository';
 import { WaitlistRepository } from '../src/scheduling/waitlist.repository';
 import { TenantScope } from '../src/tenancy/tenant-scope';
+import { PasswordService } from '../src/auth/password.service';
 
 const HAPPY_PETS_BUSINESS_ID = '00000000-0000-4000-8000-000000000001';
 const HAPPY_PETS_LOCATION_ID = '00000000-0000-4000-8000-000000000101';
@@ -21,6 +22,12 @@ const VACCINATION_SERVICE_ID = '00000000-0000-4000-8000-000000000402';
 const BEAUTY_SERVICE_ID = '00000000-0000-4000-8000-000000000403';
 const BEAUTY_PROVIDER_ID = '00000000-0000-4000-8000-000000000203';
 
+function readRefreshCookie(header: string | string[] | undefined): string {
+  const value = Array.isArray(header) ? header[0] : header;
+  if (!value) throw new Error('Refresh cookie was not returned');
+  return value.split(';', 1)[0] ?? '';
+}
+
 describe('AppModule with PostgreSQL', () => {
   let app: INestApplication;
   let databaseClient: Client;
@@ -28,6 +35,7 @@ describe('AppModule with PostgreSQL', () => {
   let notificationWorker: NotificationWorkerService;
   let notificationWorkerRepository: NotificationWorkerRepository;
   let waitlistRepository: WaitlistRepository;
+  let passwordService: PasswordService;
 
   beforeAll(async () => {
     const databaseUrl = process.env.DATABASE_URL;
@@ -45,17 +53,18 @@ describe('AppModule with PostgreSQL', () => {
     notificationWorker = app.get(NotificationWorkerService);
     notificationWorkerRepository = app.get(NotificationWorkerRepository);
     waitlistRepository = app.get(WaitlistRepository);
+    passwordService = app.get(PasswordService);
 
     databaseClient = new Client({ connectionString: databaseUrl });
     await databaseClient.connect();
     await databaseClient.query(
-      `delete from public_rate_limit_buckets where limiter like 'public-%'`,
+      `delete from rate_limit_buckets where limiter like 'public-%'`,
     );
   });
 
   afterAll(async () => {
     await databaseClient?.query(
-      `delete from public_rate_limit_buckets where limiter like 'public-%'`,
+      `delete from rate_limit_buckets where limiter like 'public-%'`,
     );
     await databaseClient?.end();
     await app?.close();
@@ -88,6 +97,123 @@ describe('AppModule with PostgreSQL', () => {
       'compound-beauty-demo',
       'happy-pets-demo',
     ]);
+  });
+
+  it('authenticates, rotates refresh sessions, rejects reuse, and re-resolves membership', async () => {
+    const ownerId = '00000000-0000-4000-8000-000000000201';
+    const email = 'groomer@happy-pets.demo';
+    const password = 'Local Integration Password!42';
+    const eventBaseline = await databaseClient.query<{ id: string }>(
+      `select coalesce(max(id), 0)::text as id from auth_events`,
+    );
+    const eventBaselineId = eventBaseline.rows[0]?.id ?? '0';
+    const passwordHash = await passwordService.hash(password);
+    await databaseClient.query(
+      `update users set password_hash = $2, disabled_at = null where id = $1`,
+      [ownerId, passwordHash],
+    );
+    await databaseClient.query(
+      `delete from rate_limit_buckets where limiter like 'auth-%'`,
+    );
+
+    try {
+      const invalidKnown = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password: 'wrong password' })
+        .expect(401);
+      const invalidUnknown = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: 'missing@example.com', password: 'wrong password' })
+        .expect(401);
+      expect(invalidKnown.body).toMatchObject({ code: 'INVALID_CREDENTIALS' });
+      expect(invalidUnknown.body).toMatchObject({ code: 'INVALID_CREDENTIALS' });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: "' OR 1=1--", password })
+        .expect(400);
+
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password })
+        .expect(200);
+      expect(login.body).toMatchObject({
+        expiresInSeconds: 900,
+        user: { id: ownerId, email },
+        business: {
+          id: HAPPY_PETS_BUSINESS_ID,
+          slug: 'happy-pets-demo',
+          role: 'Owner',
+        },
+      });
+      expect(login.body.refreshToken).toBeUndefined();
+      const firstCookie = readRefreshCookie(login.headers['set-cookie']);
+      const firstAccessToken = String(login.body.accessToken);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${firstAccessToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.business).toMatchObject({
+            id: HAPPY_PETS_BUSINESS_ID,
+            role: 'Owner',
+          });
+        });
+
+      const refresh = await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', firstCookie)
+        .expect(200);
+      const secondCookie = readRefreshCookie(refresh.headers['set-cookie']);
+      const secondAccessToken = String(refresh.body.accessToken);
+      expect(secondCookie).not.toBe(firstCookie);
+      expect(secondAccessToken).not.toBe(firstAccessToken);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${firstAccessToken}`)
+        .expect(401);
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${secondAccessToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/refresh')
+        .set('Cookie', firstCookie)
+        .expect(401);
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${secondAccessToken}`)
+        .expect(401);
+
+      const events = await databaseClient.query<{ event: string }>(
+        `select event from auth_events where user_id = $1 order by id`,
+        [ownerId],
+      );
+      expect(events.rows.map(({ event }) => event)).toEqual(
+        expect.arrayContaining([
+          'login_succeeded',
+          'refresh_rotated',
+          'refresh_reuse_detected',
+        ]),
+      );
+    } finally {
+      await databaseClient.query(`delete from auth_sessions where user_id = $1`, [
+        ownerId,
+      ]);
+      await databaseClient.query(`delete from auth_events where id > $1`, [
+        eventBaselineId,
+      ]);
+      await databaseClient.query(
+        `delete from rate_limit_buckets where limiter like 'auth-%'`,
+      );
+      await databaseClient.query(
+        `update users set password_hash = '!demo-account-disabled' where id = $1`,
+        [ownerId],
+      );
+    }
   });
 
   it('returns only services and skills owned by the requested tenant', async () => {
@@ -802,7 +928,7 @@ describe('AppModule with PostgreSQL', () => {
           },
         });
     await databaseClient.query(
-      `delete from public_rate_limit_buckets
+      `delete from rate_limit_buckets
        where limiter like 'public-booking-%'`,
     );
 
@@ -825,7 +951,7 @@ describe('AppModule with PostgreSQL', () => {
         bucketHash: string;
       }>(
         `select bucket_hash as "bucketHash"
-         from public_rate_limit_buckets
+         from rate_limit_buckets
          where limiter like 'public-booking-%'`,
       );
       expect(buckets.rows).toHaveLength(2);
@@ -837,7 +963,7 @@ describe('AppModule with PostgreSQL', () => {
       expect(JSON.stringify(buckets.rows)).not.toContain(phoneE164);
     } finally {
       await databaseClient.query(
-        `delete from public_rate_limit_buckets
+        `delete from rate_limit_buckets
          where limiter like 'public-booking-%'`,
       );
     }

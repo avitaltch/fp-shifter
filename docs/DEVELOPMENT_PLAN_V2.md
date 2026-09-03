@@ -46,6 +46,8 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Atomic compound booking, secure customer cancellation, and PostgreSQL-backed local notifications.
 - Durable public-booking quotas and protection against anonymous customer-profile replacement.
 - Sequential cancellation backfill with expiring holds, atomic claim, and a public waitlist journey.
+- Self-hosted staff authentication with rotating sessions, default-deny guards, durable login quotas, and an operator-provisioned owner.
+- React staff login/session restoration through NestJS with refresh capabilities confined to strict HttpOnly cookies and access tokens confined to memory.
 
 ### Stabilization completed
 
@@ -65,8 +67,6 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 
 ### Not started in the target backend
 
-- Tenant membership guards and authenticated scope resolution.
-- Authentication and role authorization.
 - Configuration APIs for services, provider skills, working hours, and exceptions.
 - Manager and provider operational APIs.
 - Provider-ready real notification adapters and pilot operations.
@@ -213,6 +213,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R4 — Authentication, authorization, and tenant configuration
 
 **Estimate:** 5–7 focused engineering days
+**Status:** In progress — self-hosted authentication, frontend session migration, rotating sessions, default-deny guards, current membership resolution, durable login quotas, audit events, and owner provisioning are implemented; configuration APIs and protected operational pages remain
 **Goal:** Make the vertical slice safe for a real business operator.
 
 **Work**
@@ -232,6 +233,17 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - A provider can see only their allowed schedule data.
 - Cross-tenant read and write attempts consistently return no data or authorization errors.
 - Revoked refresh tokens cannot create new sessions.
+
+**Implemented checkpoint**
+
+- Argon2id password verification uses an equal-cost dummy path for unknown users and generic credential errors.
+- Fifteen-minute access tokens are bound to PostgreSQL refresh sessions; every protected request re-resolves the enabled user, business membership, and current role.
+- Opaque refresh capabilities live only in strict HttpOnly cookies, rotate on every use, and trigger account-wide session revocation when an old token is replayed.
+- Global guards deny unmarked routes by default; public health and scheduling routes opt out explicitly.
+- PostgreSQL-backed IP and normalized-email quotas share one DRY limiter implementation and retain only keyed identity hashes.
+- An operator CLI provisions the first owner without enabling public signup.
+- Staff login and session restoration now use NestJS; refresh capabilities remain in strict HttpOnly cookies, access tokens remain in module memory, and an expired protected request performs one coordinated refresh/retry.
+- The existing Admin/Employee UI labels are a temporary presentation mapping over authoritative Owner/Manager/Provider membership roles.
 
 ### R5 — Manager and provider operating flows
 
@@ -441,4 +453,4 @@ Do not add these before evidence requires them:
 
 ## Immediate next action
 
-Implement R4 authentication, tenant membership guards, and operator configuration APIs. Keep the existing Supabase screens transitional while moving each authenticated journey to the NestJS tenant boundary.
+Implement R4 operator configuration APIs for locations, services, provider skills, business hours, and provider availability. Then migrate each protected operating page from its transitional Supabase data adapter to the authenticated NestJS tenant boundary.
