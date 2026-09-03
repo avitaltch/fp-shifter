@@ -1,16 +1,15 @@
 import { Injectable } from '@nestjs/common';
+import { OperatorAuditRepository } from '../audit/operator-audit.repository';
 import {
   TenantDatabaseService,
   type TenantTransaction,
 } from '../database/tenant-database.service';
-import { currentRequestId } from '../observability/request-context';
 import type { TenantScope } from '../tenancy/tenant-scope';
 import { AvailabilityOverlapError } from './configuration.errors';
 import type {
   AvailabilityConfiguration,
   AvailabilityInput,
   BusinessHoursConfiguration,
-  ConfigurationAuditAction,
   LocationConfiguration,
   ProviderConfiguration,
   ServiceConfiguration,
@@ -20,13 +19,12 @@ interface BooleanResult {
   exists: boolean;
 }
 
-interface AppointmentConflictResult {
-  hasConflict: boolean;
-}
-
 @Injectable()
 export class ConfigurationRepository {
-  constructor(private readonly database: TenantDatabaseService) {}
+  constructor(
+    private readonly database: TenantDatabaseService,
+    private readonly auditEvents: OperatorAuditRepository,
+  ) {}
 
   listLocations(scope: TenantScope): Promise<readonly LocationConfiguration[]> {
     return this.database.query<LocationConfiguration>(
@@ -91,7 +89,7 @@ export class ConfigurationRepository {
         [input.name, input.timezone, input.address, input.isPrimary],
       );
       if (!location) throw new Error('Location insert returned no row');
-      await this.audit(transaction, actorUserId, 'location.created', 'location', location.id);
+      await this.auditEvents.record(transaction, actorUserId, 'location.created', 'location', location.id);
       return location;
     });
   }
@@ -120,7 +118,7 @@ export class ConfigurationRepository {
         [locationId, input.name, input.timezone, input.address, input.isPrimary],
       );
       if (!location) return null;
-      await this.audit(transaction, actorUserId, 'location.updated', 'location', location.id);
+      await this.auditEvents.record(transaction, actorUserId, 'location.updated', 'location', location.id);
       return location;
     });
   }
@@ -139,7 +137,7 @@ export class ConfigurationRepository {
         [locationId],
       );
       if (!rows[0]) return false;
-      await this.audit(transaction, actorUserId, 'location.deleted', 'location', locationId);
+      await this.auditEvents.record(transaction, actorUserId, 'location.deleted', 'location', locationId);
       return true;
     });
   }
@@ -207,7 +205,7 @@ export class ConfigurationRepository {
         ],
       );
       if (!service) throw new Error('Service insert returned no row');
-      await this.audit(transaction, actorUserId, 'service.created', 'service', service.id);
+      await this.auditEvents.record(transaction, actorUserId, 'service.created', 'service', service.id);
       return service;
     });
   }
@@ -246,7 +244,7 @@ export class ConfigurationRepository {
         ],
       );
       if (!service) return null;
-      await this.audit(transaction, actorUserId, 'service.updated', 'service', service.id);
+      await this.auditEvents.record(transaction, actorUserId, 'service.updated', 'service', service.id);
       return service;
     });
   }
@@ -271,7 +269,7 @@ export class ConfigurationRepository {
         [serviceId],
       );
       if (!service) return null;
-      await this.audit(
+      await this.auditEvents.record(
         transaction,
         actorUserId,
         'service.deactivated',
@@ -371,7 +369,7 @@ export class ConfigurationRepository {
           [providerUserId, serviceIds],
         );
       }
-      await this.audit(
+      await this.auditEvents.record(
         transaction,
         actorUserId,
         'provider.skills_replaced',
@@ -465,7 +463,7 @@ export class ConfigurationRepository {
           ],
         );
       }
-      await this.audit(
+      await this.auditEvents.record(
         transaction,
         actorUserId,
         'location.hours_replaced',
@@ -587,7 +585,7 @@ export class ConfigurationRepository {
           intervals.map(({ notes }) => notes),
         ],
       );
-      await this.audit(
+      await this.auditEvents.record(
         transaction,
         actorUserId,
         'provider.availability_created',
@@ -603,62 +601,70 @@ export class ConfigurationRepository {
     });
   }
 
-  async availabilityHasAppointments(
-    scope: TenantScope,
-    availabilityId: string,
-    providerUserId?: string,
-  ): Promise<boolean | null> {
-    const [row] = await this.database.query<
-      AppointmentConflictResult & { kind: string }
-    >(
-      scope,
-      `select a.kind::text as kind,
-              case
-                when a.kind = 'Unavailable' then false
-                else exists (
-                  select 1
-                  from appointment_steps s
-                  where s.business_id = a.business_id
-                    and s.provider_user_id = a.provider_user_id
-                    and s.status in ('Scheduled', 'InProgress')
-                    and tstzrange(s.starts_at, s.ends_at, '[)')
-                        && tstzrange(a.starts_at, a.ends_at, '[)')
-                )
-              end as "hasConflict"
-       from provider_availability a
-       where a.business_id = $1
-         and a.id = $2
-         and ($3::uuid is null or a.provider_user_id = $3)`,
-      [availabilityId, providerUserId ?? null],
-    );
-    return row ? row.hasConflict : null;
-  }
-
   deleteAvailability(
     scope: TenantScope,
     actorUserId: string,
     availabilityId: string,
     providerUserId?: string,
-  ): Promise<boolean> {
+  ): Promise<'deleted' | 'not_found' | 'has_appointments'> {
     return this.database.transaction(scope, async (transaction) => {
-      const [deleted] = await transaction.query<{ id: string; providerUserId: string }>(
+      const [target] = await transaction.query<{ providerUserId: string }>(
+        `select provider_user_id as "providerUserId"
+         from provider_availability
+         where business_id = $1
+           and id = $2
+           and ($3::uuid is null or provider_user_id = $3)`,
+        [availabilityId, providerUserId ?? null],
+      );
+      if (!target) return 'not_found';
+      await transaction.query(
+        `select user_id
+         from business_memberships
+         where business_id = $1 and user_id = $2
+         for update`,
+        [target.providerUserId],
+      );
+      const [availability] = await transaction.query<{
+        providerUserId: string;
+        hasConflict: boolean;
+      }>(
+        `select a.provider_user_id as "providerUserId",
+                case
+                  when a.kind = 'Unavailable' then false
+                  else exists (
+                    select 1
+                    from appointment_steps s
+                    where s.business_id = a.business_id
+                      and s.provider_user_id = a.provider_user_id
+                      and s.status in ('Scheduled', 'InProgress')
+                      and tstzrange(s.starts_at, s.ends_at, '[)')
+                          && tstzrange(a.starts_at, a.ends_at, '[)')
+                  )
+                end as "hasConflict"
+         from provider_availability a
+         where a.business_id = $1 and a.id = $2
+         for update`,
+        [availabilityId],
+      );
+      if (!availability) return 'not_found';
+      if (availability.hasConflict) return 'has_appointments';
+      const [deleted] = await transaction.query<{ id: string }>(
         `delete from provider_availability
          where business_id = $1
            and id = $2
-           and ($3::uuid is null or provider_user_id = $3)
-         returning id, provider_user_id as "providerUserId"`,
-        [availabilityId, providerUserId ?? null],
+         returning id`,
+        [availabilityId],
       );
-      if (!deleted) return false;
-      await this.audit(
+      if (!deleted) return 'not_found';
+      await this.auditEvents.record(
         transaction,
         actorUserId,
         'provider.availability_deleted',
         'provider_availability',
         availabilityId,
-        { providerUserId: deleted.providerUserId },
+        { providerUserId: availability.providerUserId },
       );
-      return true;
+      return 'deleted';
     });
   }
 
@@ -681,26 +687,4 @@ export class ConfigurationRepository {
     );
   }
 
-  private audit(
-    transaction: TenantTransaction,
-    actorUserId: string,
-    action: ConfigurationAuditAction,
-    resourceType: string,
-    resourceId: string | null,
-    details: Readonly<Record<string, unknown>> = {},
-  ): Promise<readonly never[]> {
-    return transaction.query(
-      `insert into operator_audit_events
-         (business_id, actor_user_id, action, resource_type, resource_id, details, request_id)
-       values ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
-      [
-        actorUserId,
-        action,
-        resourceType,
-        resourceId,
-        JSON.stringify(details),
-        currentRequestId() ?? null,
-      ],
-    );
-  }
 }

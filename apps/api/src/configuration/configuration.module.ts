@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OperatorAuditModule } from '../audit/operator-audit.module';
 import { DatabaseModule } from '../database/database.module';
 import { AvailabilityController } from './availability.controller';
 import { ConfigurationController } from './configuration.controller';
@@ -6,7 +7,7 @@ import { ConfigurationRepository } from './configuration.repository';
 import { ConfigurationService } from './configuration.service';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, OperatorAuditModule],
   controllers: [ConfigurationController, AvailabilityController],
   providers: [ConfigurationRepository, ConfigurationService],
   exports: [ConfigurationService],

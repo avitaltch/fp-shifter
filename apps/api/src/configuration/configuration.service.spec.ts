@@ -86,8 +86,7 @@ function repositoryMock() {
     replaceBusinessHours: vi.fn().mockResolvedValue([]),
     listAvailability: vi.fn().mockResolvedValue([]),
     createAvailability: vi.fn().mockResolvedValue([]),
-    availabilityHasAppointments: vi.fn().mockResolvedValue(false),
-    deleteAvailability: vi.fn().mockResolvedValue(true),
+    deleteAvailability: vi.fn().mockResolvedValue('deleted'),
   };
 }
 
@@ -427,11 +426,11 @@ describe('ConfigurationService', () => {
       PROVIDER_ID,
     );
 
-    repository.availabilityHasAppointments.mockResolvedValue(true);
+    repository.deleteAvailability.mockResolvedValue('has_appointments');
     await expect(
       configuration.deleteAvailability(provider, AVAILABILITY_ID),
     ).rejects.toMatchObject({ response: { code: 'AVAILABILITY_HAS_APPOINTMENTS' } });
-    repository.availabilityHasAppointments.mockResolvedValue(null);
+    repository.deleteAvailability.mockResolvedValue('not_found');
     await expect(
       configuration.deleteAvailability(provider, AVAILABILITY_ID),
     ).rejects.toBeInstanceOf(NotFoundException);

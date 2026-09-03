@@ -7,6 +7,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigurationModule } from './configuration/configuration.module';
+import { OperationsModule } from './operations/operations.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ConfigurationModule } from './configuration/configuration.module';
     ObservabilityModule,
     AuthModule,
     ConfigurationModule,
+    OperationsModule,
     HealthModule,
     NotificationsModule,
     SchedulingModule,

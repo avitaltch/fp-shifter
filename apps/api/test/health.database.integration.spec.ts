@@ -2033,4 +2033,141 @@ describe('AppModule with PostgreSQL', () => {
       await databaseClient.query('rollback');
     }
   });
+
+  it('serves tenant-safe manager and provider operations with audited status changes', async () => {
+    const ownerId = '00000000-0000-4000-8000-000000000201';
+    const providerId = '00000000-0000-4000-8000-000000000202';
+    const beautyOwnerId = '00000000-0000-4000-8000-000000000203';
+    const appointmentId = '00000000-0000-4000-8000-000000000901';
+    const ownerStepId = '00000000-0000-4000-8000-000000000911';
+    const providerStepId = '00000000-0000-4000-8000-000000000912';
+    const password = 'Operations Integration Password!42';
+    const passwordHash = await passwordService.hash(password);
+    const auditBaseline = await databaseClient.query<{ id: string }>(
+      `select coalesce(max(id), 0)::text as id from operator_audit_events`,
+    );
+    const auditBaselineId = auditBaseline.rows[0]?.id ?? '0';
+    await databaseClient.query(
+      `update users
+       set password_hash = $1, disabled_at = null
+       where id = any($2::uuid[])`,
+      [passwordHash, [ownerId, providerId, beautyOwnerId]],
+    );
+    await databaseClient.query(
+      `delete from rate_limit_buckets where limiter like 'auth-%'`,
+    );
+
+    const login = async (email: string): Promise<string> => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password })
+        .expect(200);
+      return String(response.body.accessToken);
+    };
+
+    try {
+      const [ownerToken, providerToken, beautyToken] = await Promise.all([
+        login('groomer@happy-pets.demo'),
+        login('vet@happy-pets.demo'),
+        login('stylist@compound-beauty.demo'),
+      ]);
+      const range = 'from=2030-01-07T06%3A00%3A00.000Z&to=2030-01-08T06%3A00%3A00.000Z';
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/operator/appointments?${range}`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(`/api/v1/operator/appointments?${range}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toHaveLength(1);
+          expect(body[0]).toMatchObject({
+            id: appointmentId,
+            customerFirstName: 'Ari',
+            steps: [
+              { id: ownerStepId, sequenceNumber: 1 },
+              { id: providerStepId, sequenceNumber: 2 },
+            ],
+          });
+        });
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/operator/me/steps?${range}`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.map(({ id }: { id: string }) => id)).toEqual([providerStepId]);
+        });
+      await request(app.getHttpServer())
+        .patch(`/api/v1/operator/steps/${ownerStepId}/status`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ status: 'Completed' })
+        .expect(404);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/operator/steps/${providerStepId}/status`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({ status: 'Completed' })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ id: providerStepId, status: 'Completed' });
+        });
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/operator/steps/${ownerStepId}/reassignment-options`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ providerUserId: ownerId, eligible: true }),
+              expect.objectContaining({
+                providerUserId: providerId,
+                eligible: false,
+                reasons: expect.arrayContaining(['NOT_QUALIFIED']),
+              }),
+            ]),
+          );
+        });
+      await request(app.getHttpServer())
+        .get(`/api/v1/operator/steps/${ownerStepId}/reassignment-options`)
+        .set('Authorization', `Bearer ${beautyToken}`)
+        .expect(404);
+
+      const audit = await databaseClient.query<{ action: string; actor_user_id: string }>(
+        `select action, actor_user_id
+         from operator_audit_events
+         where id > $1 and resource_id = $2`,
+        [auditBaselineId, providerStepId],
+      );
+      expect(audit.rows).toContainEqual({
+        action: 'appointment.step_status_changed',
+        actor_user_id: providerId,
+      });
+    } finally {
+      await databaseClient.query(
+        `update appointment_steps set status = 'Scheduled' where id = $1`,
+        [providerStepId],
+      );
+      await databaseClient.query(
+        `update appointments set status = 'Confirmed' where id = $1`,
+        [appointmentId],
+      );
+      await databaseClient.query(`delete from operator_audit_events where id > $1`, [
+        auditBaselineId,
+      ]);
+      await databaseClient.query(
+        `delete from auth_sessions where user_id = any($1::uuid[])`,
+        [[ownerId, providerId, beautyOwnerId]],
+      );
+      await databaseClient.query(
+        `delete from rate_limit_buckets where limiter like 'auth-%'`,
+      );
+      await databaseClient.query(
+        `update users set password_hash = '!demo-account-disabled' where id = any($1::uuid[])`,
+        [[ownerId, providerId, beautyOwnerId]],
+      );
+    }
+  });
 });

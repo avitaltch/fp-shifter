@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OperatorAuditModule } from '../audit/operator-audit.module';
 import { DatabaseModule } from '../database/database.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SecurityModule } from '../security/security.module';
@@ -24,7 +25,7 @@ import { WaitlistOfferTokenService } from './waitlist-offer-token.service';
 import { WaitlistWorkerService } from './waitlist-worker.service';
 
 @Module({
-  imports: [DatabaseModule, NotificationsModule, SecurityModule],
+  imports: [DatabaseModule, NotificationsModule, SecurityModule, OperatorAuditModule],
   controllers: [
     PublicCatalogController,
     PublicAvailabilityController,
@@ -55,6 +56,8 @@ import { WaitlistWorkerService } from './waitlist-worker.service';
     PublicCatalogService,
     PublicBookingService,
     WaitlistWorkerService,
+    WaitlistRepository,
+    AppointmentManagementRepository,
   ],
 })
 export class SchedulingModule {}

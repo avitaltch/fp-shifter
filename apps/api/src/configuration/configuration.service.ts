@@ -334,27 +334,21 @@ export class ConfigurationService {
   ): Promise<void> {
     const scope = this.scope(principal);
     const providerUserId = principal.role === 'Provider' ? principal.userId : undefined;
-    const conflictState = await this.repository.availabilityHasAppointments(
-      scope,
-      availabilityId,
-      providerUserId,
-    );
-    if (conflictState === null) {
-      throw notFound('AVAILABILITY_NOT_FOUND', 'Availability was not found');
-    }
-    if (conflictState) {
-      throw conflict(
-        'AVAILABILITY_HAS_APPOINTMENTS',
-        'Availability covering scheduled work cannot be deleted',
-      );
-    }
-    const deleted = await this.repository.deleteAvailability(
+    const outcome = await this.repository.deleteAvailability(
       scope,
       principal.userId,
       availabilityId,
       providerUserId,
     );
-    if (!deleted) throw notFound('AVAILABILITY_NOT_FOUND', 'Availability was not found');
+    if (outcome === 'not_found') {
+      throw notFound('AVAILABILITY_NOT_FOUND', 'Availability was not found');
+    }
+    if (outcome === 'has_appointments') {
+      throw conflict(
+        'AVAILABILITY_HAS_APPOINTMENTS',
+        'Availability covering scheduled work cannot be deleted',
+      );
+    }
   }
 
   private scope(principal: AuthPrincipal): TenantScope {
