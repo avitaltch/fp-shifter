@@ -216,6 +216,334 @@ describe('AppModule with PostgreSQL', () => {
     }
   });
 
+  it('enforces tenant and role boundaries across operator configuration mutations', async () => {
+    const happyOwnerId = '00000000-0000-4000-8000-000000000201';
+    const happyProviderId = '00000000-0000-4000-8000-000000000202';
+    const beautyOwnerId = '00000000-0000-4000-8000-000000000203';
+    const password = 'Configuration Integration Password!42';
+    const passwordHash = await passwordService.hash(password);
+    const auditBaseline = await databaseClient.query<{ id: string }>(
+      `select coalesce(max(id), 0)::text as id from operator_audit_events`,
+    );
+    const auditBaselineId = auditBaseline.rows[0]?.id ?? '0';
+    let createdServiceId: string | undefined;
+    let createdLocationId: string | undefined;
+    let createdAvailabilityId: string | undefined;
+
+    await databaseClient.query(
+      `update users
+       set password_hash = $1, disabled_at = null
+       where id = any($2::uuid[])`,
+      [passwordHash, [happyOwnerId, happyProviderId, beautyOwnerId]],
+    );
+    await databaseClient.query(
+      `delete from rate_limit_buckets where limiter like 'auth-%'`,
+    );
+
+    const login = async (email: string): Promise<string> => {
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password })
+        .expect(200);
+      return String(response.body.accessToken);
+    };
+
+    try {
+      const [ownerToken, providerToken, beautyToken] = await Promise.all([
+        login('groomer@happy-pets.demo'),
+        login('vet@happy-pets.demo'),
+        login('stylist@compound-beauty.demo'),
+      ]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/operator/services')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(403)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'INSUFFICIENT_ROLE' });
+        });
+
+      await request(app.getHttpServer())
+        .get('/api/v1/operator/services')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.map(({ id }: { id: string }) => id)).toEqual([
+            PET_TRIM_SERVICE_ID,
+            VACCINATION_SERVICE_ID,
+          ]);
+          expect(JSON.stringify(body)).not.toContain(BEAUTY_SERVICE_ID);
+        });
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/operator/services/${PET_TRIM_SERVICE_ID}`)
+        .set('Authorization', `Bearer ${beautyToken}`)
+        .send({ priceMinor: 1 })
+        .expect(404);
+
+      const serviceName = `Integration service ${randomUUID()}`;
+      const createdService = await request(app.getHttpServer())
+        .post('/api/v1/operator/services')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: serviceName,
+          description: '<script>alert(1)</script>',
+          durationMinutes: 20,
+          priceMinor: 4_500,
+          currency: 'ils',
+        })
+        .expect(201);
+      createdServiceId = String(createdService.body.id);
+      expect(createdService.body).toMatchObject({
+        name: serviceName,
+        description: '<script>alert(1)</script>',
+        durationMinutes: 20,
+        priceMinor: 4_500,
+        currency: 'ILS',
+        active: true,
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/v1/operator/services')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: serviceName.toUpperCase(),
+          durationMinutes: 20,
+          priceMinor: 4_500,
+        })
+        .expect(409)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'SERVICE_NAME_EXISTS' });
+        });
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/operator/providers/${happyOwnerId}/skills`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ serviceIds: [PET_TRIM_SERVICE_ID, createdServiceId] })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.serviceIds).toEqual(
+            expect.arrayContaining([PET_TRIM_SERVICE_ID, createdServiceId]),
+          );
+          expect(body.disabledAt).toBeUndefined();
+        });
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/operator/providers/${happyOwnerId}/skills`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ serviceIds: [BEAUTY_SERVICE_ID] })
+        .expect(400)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'INVALID_SERVICE_SELECTION' });
+        });
+
+      const createdLocation = await request(app.getHttpServer())
+        .post('/api/v1/operator/locations')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          name: 'Integration branch',
+          timezone: 'Asia/Jerusalem',
+          address: 'Test only',
+        })
+        .expect(201);
+      createdLocationId = String(createdLocation.body.id);
+      expect(createdLocation.body.isPrimary).toBe(false);
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/operator/locations/${createdLocationId}/hours`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          intervals: [
+            { isoWeekday: 1, startsAt: '08:00', endsAt: '12:00' },
+            { isoWeekday: 1, startsAt: '11:00', endsAt: '15:00' },
+          ],
+        })
+        .expect(400)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'BUSINESS_HOURS_OVERLAP' });
+        });
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/operator/locations/${createdLocationId}/hours`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          intervals: [
+            { isoWeekday: 1, startsAt: '08:00', endsAt: '12:00' },
+            { isoWeekday: 1, startsAt: '13:00', endsAt: '17:00' },
+          ],
+        })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toHaveLength(2);
+        });
+
+      await request(app.getHttpServer())
+        .get(
+          `/api/v1/operator/availability?from=2031-01-01T00%3A00%3A00.000Z&to=2031-01-03T00%3A00%3A00.000Z&providerUserId=${happyProviderId}`,
+        )
+        .set('Authorization', `Bearer ${beautyToken}`)
+        .expect(404);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/operator/availability')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          providerUserId: happyOwnerId,
+          intervals: [
+            {
+              locationId: createdLocationId,
+              kind: 'Available',
+              startsAt: '2031-01-01T08:00:00.000Z',
+              endsAt: '2031-01-01T10:00:00.000Z',
+            },
+          ],
+        })
+        .expect(403)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'PROVIDER_SCOPE_FORBIDDEN' });
+        });
+
+      const createdAvailability = await request(app.getHttpServer())
+        .post('/api/v1/operator/availability')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          intervals: [
+            {
+              locationId: createdLocationId,
+              kind: 'Available',
+              startsAt: '2031-01-01T08:00:00.000Z',
+              endsAt: '2031-01-01T10:00:00.000Z',
+              notes: 'Integration availability',
+            },
+          ],
+        })
+        .expect(201);
+      createdAvailabilityId = String(createdAvailability.body[0]?.id);
+
+      await request(app.getHttpServer())
+        .post('/api/v1/operator/availability')
+        .set('Authorization', `Bearer ${providerToken}`)
+        .send({
+          intervals: [
+            {
+              locationId: createdLocationId,
+              kind: 'Available',
+              startsAt: '2031-01-01T09:00:00.000Z',
+              endsAt: '2031-01-01T11:00:00.000Z',
+            },
+          ],
+        })
+        .expect(409)
+        .expect(({ body }) => {
+          expect(body).toMatchObject({ code: 'AVAILABILITY_OVERLAP' });
+        });
+
+      await request(app.getHttpServer())
+        .get(
+          '/api/v1/operator/availability?from=2031-01-01T00%3A00%3A00.000Z&to=2031-01-03T00%3A00%3A00.000Z',
+        )
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body).toEqual([
+            expect.objectContaining({
+              id: createdAvailabilityId,
+              providerUserId: happyProviderId,
+            }),
+          ]);
+        });
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/operator/availability/${createdAvailabilityId}`)
+        .set('Authorization', `Bearer ${providerToken}`)
+        .expect(204);
+      createdAvailabilityId = undefined;
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/operator/services/${createdServiceId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.active).toBe(false);
+        });
+
+      await request(app.getHttpServer())
+        .delete(`/api/v1/operator/locations/${createdLocationId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(204);
+      createdLocationId = undefined;
+
+      const audit = await databaseClient.query<{ action: string; businessId: string }>(
+        `select action, business_id as "businessId"
+         from operator_audit_events
+         where id > $1
+         order by id`,
+        [auditBaselineId],
+      );
+      expect(audit.rows.map(({ action }) => action)).toEqual(
+        expect.arrayContaining([
+          'service.created',
+          'provider.skills_replaced',
+          'location.created',
+          'location.hours_replaced',
+          'provider.availability_created',
+          'provider.availability_deleted',
+          'service.deactivated',
+          'location.deleted',
+        ]),
+      );
+      expect(audit.rows.every(({ businessId }) => businessId === HAPPY_PETS_BUSINESS_ID)).toBe(
+        true,
+      );
+    } finally {
+      if (createdAvailabilityId) {
+        await databaseClient.query(
+          `delete from provider_availability where id = $1`,
+          [createdAvailabilityId],
+        );
+      }
+      await databaseClient.query(
+        `delete from provider_skills
+         where business_id = $1 and provider_user_id = $2`,
+        [HAPPY_PETS_BUSINESS_ID, happyOwnerId],
+      );
+      await databaseClient.query(
+        `insert into provider_skills
+           (id, business_id, provider_user_id, service_id)
+         values ($1, $2, $3, $4)
+         on conflict (business_id, provider_user_id, service_id) do nothing`,
+        [
+          '00000000-0000-4000-8000-000000000601',
+          HAPPY_PETS_BUSINESS_ID,
+          happyOwnerId,
+          PET_TRIM_SERVICE_ID,
+        ],
+      );
+      if (createdServiceId) {
+        await databaseClient.query(`delete from services where id = $1`, [createdServiceId]);
+      }
+      if (createdLocationId) {
+        await databaseClient.query(`delete from locations where id = $1`, [createdLocationId]);
+      }
+      await databaseClient.query(`delete from operator_audit_events where id > $1`, [
+        auditBaselineId,
+      ]);
+      await databaseClient.query(
+        `delete from auth_sessions where user_id = any($1::uuid[])`,
+        [[happyOwnerId, happyProviderId, beautyOwnerId]],
+      );
+      await databaseClient.query(
+        `delete from rate_limit_buckets where limiter like 'auth-%'`,
+      );
+      await databaseClient.query(
+        `update users
+         set password_hash = '!demo-account-disabled'
+         where id = any($1::uuid[])`,
+        [[happyOwnerId, happyProviderId, beautyOwnerId]],
+      );
+    }
+  });
+
   it('returns only services and skills owned by the requested tenant', async () => {
     const happyPetsScope = TenantScope.forBusiness(HAPPY_PETS_BUSINESS_ID);
     const beautyScope = TenantScope.forBusiness(BEAUTY_BUSINESS_ID);

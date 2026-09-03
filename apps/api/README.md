@@ -210,11 +210,12 @@ Implemented:
 - real AppModule/PostgreSQL readiness and seed integration coverage;
 - self-hosted Argon2id staff authentication, rotating PostgreSQL refresh sessions, and default-deny access/role guards;
 - durable keyed login quotas, authentication audit events, and first-owner provisioning;
+- tenant-derived operator APIs for locations, services, provider qualifications, weekly hours, and bounded availability;
+- durable operator mutation auditing and cross-tenant/role authorization coverage;
 - sequential waitlist backfill with expiring compound holds and single-use claims;
 - CI migration rollback and reapply validation.
 
 Not implemented yet:
 
-- configuration endpoints for services, provider skills and availability;
 - manager/provider operational endpoints and migration of their legacy data adapters;
 - real email, SMS, and WhatsApp provider adapters.

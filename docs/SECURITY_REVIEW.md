@@ -28,6 +28,8 @@ No critical findings were identified. The two high-risk findings from the baseli
 - Browser capability handoff is fragment-only, validated by purpose, removed from the address bar, sent to the API only in authorization headers after explicit customer confirmation, and excluded from persistent browser storage.
 - Staff passwords use Argon2id; refresh sessions rotate as hashed opaque capabilities, replay revokes active sessions, and protected requests re-resolve the current tenant membership and role from PostgreSQL.
 - Authentication entry points use durable IP/email quotas with generic invalid-credential responses and keyed audit identities.
+- Operator configuration never accepts a tenant identifier: the active membership supplies the immutable scope, cross-tenant UUIDs resolve as not found, providers can mutate only their own availability, and every successful configuration mutation is audited.
+- Configuration payload counts and time ranges are bounded; parent-row locks serialize replace operations and prevent concurrent updates from interleaving partial state.
 - PostgreSQL exclusion constraints remain the final double-booking authority.
 
 ## Verification required at every checkpoint

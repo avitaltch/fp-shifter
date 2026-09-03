@@ -6,6 +6,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 import { AuthModule } from './auth/auth.module';
+import { ConfigurationModule } from './configuration/configuration.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
     }),
     ObservabilityModule,
     AuthModule,
+    ConfigurationModule,
     HealthModule,
     NotificationsModule,
     SchedulingModule,

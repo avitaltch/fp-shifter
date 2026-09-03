@@ -62,31 +62,36 @@ export class RateLimiterService {
   ): Promise<readonly RateLimitBucketRow[]> {
     return this.database.query<RateLimitBucketRow>(
       `with requested as (
-         select *
+         select input.*, clock_timestamp() as observed_at
          from unnest($1::text[], $2::text[], $3::integer[]) with ordinality
            as input(limiter, bucket_hash, window_seconds, ordinal)
        ), consumed as (
          insert into rate_limit_buckets
            (limiter, bucket_hash, window_started_at, window_seconds,
             request_count, last_seen_at)
-         select limiter, bucket_hash, now(), window_seconds, 1, now()
+         select limiter, bucket_hash, observed_at, window_seconds, 1, observed_at
          from requested
          order by ordinal
          on conflict (limiter, bucket_hash) do update set
            request_count = case
              when rate_limit_buckets.window_started_at
-                    <= now() - make_interval(secs => excluded.window_seconds)
+                    <= excluded.last_seen_at
+                       - make_interval(secs => excluded.window_seconds)
                then 1
              else rate_limit_buckets.request_count + 1
            end,
            window_started_at = case
              when rate_limit_buckets.window_started_at
-                    <= now() - make_interval(secs => excluded.window_seconds)
-               then now()
+                    <= excluded.last_seen_at
+                       - make_interval(secs => excluded.window_seconds)
+               then excluded.last_seen_at
              else rate_limit_buckets.window_started_at
            end,
            window_seconds = excluded.window_seconds,
-           last_seen_at = now()
+           last_seen_at = greatest(
+             rate_limit_buckets.last_seen_at,
+             excluded.last_seen_at
+           )
          returning limiter, request_count, window_started_at, window_seconds
        )
        select limiter,
@@ -94,7 +99,8 @@ export class RateLimiterService {
               greatest(
                 1,
                 ceil(extract(epoch from (
-                  window_started_at + make_interval(secs => window_seconds) - now()
+                  window_started_at + make_interval(secs => window_seconds)
+                    - clock_timestamp()
                 )))::integer
               ) as "retryAfterSeconds"
        from consumed

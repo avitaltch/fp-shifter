@@ -48,6 +48,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - Sequential cancellation backfill with expiring holds, atomic claim, and a public waitlist journey.
 - Self-hosted staff authentication with rotating sessions, default-deny guards, durable login quotas, and an operator-provisioned owner.
 - React staff login/session restoration through NestJS with refresh capabilities confined to strict HttpOnly cookies and access tokens confined to memory.
+- Tenant-safe operator configuration APIs for locations, services, qualifications, business hours, and provider availability, with durable mutation audit events.
 
 ### Stabilization completed
 
@@ -67,7 +68,6 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 
 ### Not started in the target backend
 
-- Configuration APIs for services, provider skills, working hours, and exceptions.
 - Manager and provider operational APIs.
 - Provider-ready real notification adapters and pilot operations.
 
@@ -213,7 +213,7 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 ### R4 — Authentication, authorization, and tenant configuration
 
 **Estimate:** 5–7 focused engineering days
-**Status:** In progress — self-hosted authentication, frontend session migration, rotating sessions, default-deny guards, current membership resolution, durable login quotas, audit events, and owner provisioning are implemented; configuration APIs and protected operational pages remain
+**Status:** Implemented and locally verified — protected operating pages migrate in R5
 **Goal:** Make the vertical slice safe for a real business operator.
 
 **Work**
@@ -244,6 +244,10 @@ V1 correctly chose the target architecture but assumed a cleaner transition than
 - An operator CLI provisions the first owner without enabling public signup.
 - Staff login and session restoration now use NestJS; refresh capabilities remain in strict HttpOnly cookies, access tokens remain in module memory, and an expired protected request performs one coordinated refresh/retry.
 - The existing Admin/Employee UI labels are a temporary presentation mapping over authoritative Owner/Manager/Provider membership roles.
+- Owners and managers can configure tenant-owned locations, services, qualifications, and weekly hours; historical services deactivate instead of being deleted.
+- Owners/managers may manage staff availability while providers are constrained to their own records. Requests and time ranges are bounded, overlapping intervals are rejected, and availability covering scheduled work cannot be removed.
+- Replacement operations lock their tenant-owned parent row, commit atomically, and emit durable actor/resource audit events. Real PostgreSQL tests prove role denial, cross-tenant not-found behavior, input validation, and audit tenancy.
+- The shared PostgreSQL rate limiter now carries a monotonic observation time through concurrent upserts; a 20-iteration double-booking stress proof no longer produces timestamp-constraint failures.
 
 ### R5 — Manager and provider operating flows
 
@@ -453,4 +457,4 @@ Do not add these before evidence requires them:
 
 ## Immediate next action
 
-Implement R4 operator configuration APIs for locations, services, provider skills, business hours, and provider availability. Then migrate each protected operating page from its transitional Supabase data adapter to the authenticated NestJS tenant boundary.
+Implement R5 manager/provider operational APIs and migrate each protected operating page from its transitional Supabase data adapter to the authenticated NestJS tenant boundary.
