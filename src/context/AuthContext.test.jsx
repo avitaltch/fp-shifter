@@ -24,6 +24,8 @@ const ownerSession = {
     email: 'owner@example.com',
     firstName: 'דנה',
     lastName: 'לוי',
+    phoneE164: '+972501111111',
+    mustChangePassword: false,
   },
   business: {
     id: 'business-1',

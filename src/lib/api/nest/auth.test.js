@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearStaffAccessToken,
+  changeStaffPassword,
   loginStaff,
   logoutStaff,
   refreshStaffSession,
@@ -159,5 +160,25 @@ describe('NestJS auth adapter', () => {
     expect(fetchImpl.mock.calls[2][1].headers.Authorization).toBe(
       'Bearer rotated-access-token'
     );
+  });
+
+  it('changes passwords through the authenticated endpoint', async () => {
+    await loginStaff(
+      { email: 'owner@example.com', password: 'secret' },
+      { apiBaseUrl: 'http://localhost/api/v1', fetchImpl: successfulFetch(session) }
+    );
+    const fetchImpl = successfulFetch(null);
+    await changeStaffPassword('current-password', 'new-secure-password', {
+      apiBaseUrl: 'http://localhost/api/v1',
+      fetchImpl,
+    });
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://localhost/api/v1/auth/password');
+    expect(fetchImpl.mock.calls[0][1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        currentPassword: 'current-password',
+        newPassword: 'new-secure-password',
+      }),
+    });
   });
 });

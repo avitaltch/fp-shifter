@@ -1,5 +1,10 @@
 import { useState, useCallback } from 'react';
-import { listServices, createService, updateService, deleteService } from '../lib/api';
+import {
+  listOperatorServices,
+  createOperatorService,
+  updateOperatorService,
+  deactivateOperatorService,
+} from '../lib/api';
 import { friendlyError } from '../lib/errors';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
@@ -27,8 +32,9 @@ function validateServiceForm(formData) {
     payload: {
       name: formData.name.trim(),
       description: formData.description.trim(),
-      base_price: price,
-      default_duration: duration,
+      priceMinor: Math.round(price * 100),
+      durationMinutes: duration,
+      currency: 'ILS',
     },
   };
 }
@@ -40,13 +46,14 @@ const ServiceManagementPage = () => {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState(EMPTY_FORM);
 
-  const fetchServices = useCallback(() => listServices(), []);
+  const fetchServices = useCallback(() => listOperatorServices(), []);
   const { data, loading, error, refetch } = useAsyncData(fetchServices, {
     errorMessage: 'שגיאה בטעינת השירותים.',
   });
   const { message: deleteMessage, run } = useAction();
 
   const services = data ?? [];
+  const activeServices = services.filter((service) => service.active);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -71,15 +78,15 @@ const ServiceManagementPage = () => {
     setSaving(true);
     try {
       if (editingId) {
-        await updateService(editingId, payload);
+        await updateOperatorService(editingId, payload);
       } else {
-        await createService(payload);
+        await createOperatorService(payload);
       }
       resetForm();
       refetch();
     } catch (err) {
       console.error(err);
-      const isDuplicate = (err?.message || '').includes('service_types_name_unique');
+      const isDuplicate = err?.code === 'SERVICE_NAME_EXISTS';
       setFormError(
         isDuplicate ? 'כבר קיים שירות בשם זה.' : friendlyError(err, 'שגיאה בשמירת השירות.')
       );
@@ -90,7 +97,7 @@ const ServiceManagementPage = () => {
 
   const handleDelete = async (id) => {
     if (!window.confirm('האם אתה בטוח שברצונך למחוק שירות זה? תורים קיימים לא יימחקו.')) return;
-    const { ok } = await run(id, () => deleteService(id), {
+    const { ok } = await run(id, () => deactivateOperatorService(id), {
       errorFallback: 'שגיאה במחיקת השירות.',
     });
     if (ok) refetch();
@@ -100,8 +107,8 @@ const ServiceManagementPage = () => {
     setFormData({
       name: service.name,
       description: service.description || '',
-      base_price: service.base_price.toString(),
-      default_duration: service.default_duration.toString()
+      base_price: (service.priceMinor / 100).toString(),
+      default_duration: service.durationMinutes.toString()
     });
     setEditingId(service.id);
     setIsAdding(false);
@@ -161,20 +168,20 @@ const ServiceManagementPage = () => {
       <Alert type="error">{error}</Alert>
       <Alert type={deleteMessage?.type}>{deleteMessage?.text}</Alert>
 
-      {!loading && !error && services.length === 0 && !isAdding && (
+      {!loading && !error && activeServices.length === 0 && !isAdding && (
         <EmptyState icon={Settings} text="לא נמצאו שירותים. הוסף את השירות הראשון שלך!" />
       )}
 
-      {!loading && services.length > 0 && (
+      {!loading && activeServices.length > 0 && (
         <div className="services-list">
-          {services.map(service => (
+          {activeServices.map(service => (
             <div key={service.id} className="card service-card">
               <div className="service-info">
                 <h3>{service.name}</h3>
                 <p className="service-desc">{service.description || 'ללא תיאור'}</p>
                 <div className="service-meta">
-                  <span className="badge">₪{service.base_price}</span>
-                  <span className="badge">{service.default_duration} דק'</span>
+                  <span className="badge">₪{service.priceMinor / 100}</span>
+                  <span className="badge">{service.durationMinutes} דק'</span>
                 </div>
               </div>
               <div className="service-actions">

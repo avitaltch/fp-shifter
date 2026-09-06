@@ -37,6 +37,13 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  if (
+    session.user.mustChangePassword &&
+    location.pathname !== '/employee/profile'
+  ) {
+    return <Navigate to="/employee/profile" replace />;
+  }
+
   // Logged in but the profile fetch failed — offer a retry instead of
   // silently redirecting (which looks like a permissions problem).
   if (profileError) {

@@ -2,12 +2,15 @@ import { createParamDecorator, type ExecutionContext, SetMetadata } from '@nestj
 import {
   AUTH_PUBLIC_KEY,
   AUTH_ROLES_KEY,
+  AUTH_PASSWORD_CHANGE_ALLOWED_KEY,
 } from './auth.constants';
 import type { AuthenticatedRequest, AuthPrincipal, MembershipRole } from './auth.types';
 
 export const Public = () => SetMetadata(AUTH_PUBLIC_KEY, true);
 export const Roles = (...roles: MembershipRole[]) =>
   SetMetadata(AUTH_ROLES_KEY, roles);
+export const PasswordChangeAllowed = () =>
+  SetMetadata(AUTH_PASSWORD_CHANGE_ALLOWED_KEY, true);
 
 export const CurrentPrincipal = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AuthPrincipal => {

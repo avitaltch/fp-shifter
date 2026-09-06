@@ -14,10 +14,12 @@ const candidate: LoginCandidate = {
   passwordHash: '$argon2id$hash',
   firstName: 'Dana',
   lastName: 'Owner',
+  phoneE164: null,
   businessId: '00000000-0000-4000-8000-000000000001',
   businessSlug: 'happy-pets-demo',
   membershipId: '00000000-0000-4000-8000-000000000301',
   role: 'Owner',
+  mustChangePassword: false,
 };
 const principal: AuthPrincipal = {
   ...candidate,
@@ -32,8 +34,13 @@ describe('AuthService', () => {
     recordFailedLogin: ReturnType<typeof vi.fn>;
     rotate: ReturnType<typeof vi.fn>;
     revoke: ReturnType<typeof vi.fn>;
+    readPasswordHash: ReturnType<typeof vi.fn>;
+    replacePassword: ReturnType<typeof vi.fn>;
   };
-  let passwords: { verify: ReturnType<typeof vi.fn> };
+  let passwords: {
+    verify: ReturnType<typeof vi.fn>;
+    hash: ReturnType<typeof vi.fn>;
+  };
   let rateLimiter: { assertLoginAllowed: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
@@ -46,8 +53,13 @@ describe('AuthService', () => {
       recordFailedLogin: vi.fn().mockResolvedValue(undefined),
       rotate: vi.fn(),
       revoke: vi.fn().mockResolvedValue(undefined),
+      readPasswordHash: vi.fn().mockResolvedValue(candidate.passwordHash),
+      replacePassword: vi.fn().mockResolvedValue(true),
     };
-    passwords = { verify: vi.fn().mockResolvedValue(true) };
+    passwords = {
+      verify: vi.fn().mockResolvedValue(true),
+      hash: vi.fn().mockResolvedValue('$argon2id$new-hash'),
+    };
     rateLimiter = { assertLoginAllowed: vi.fn().mockResolvedValue(undefined) };
     const module = await Test.createTestingModule({
       providers: [
@@ -148,5 +160,24 @@ describe('AuthService', () => {
       user: { id: principal.userId },
       business: { id: principal.businessId, role: 'Owner' },
     });
+  });
+
+  it('verifies and atomically replaces the current password', async () => {
+    await expect(
+      service.changePassword(principal, 'current password', 'new secure password'),
+    ).resolves.toBeUndefined();
+    expect(repository.replacePassword).toHaveBeenCalledWith(
+      principal,
+      candidate.passwordHash,
+      '$argon2id$new-hash',
+    );
+  });
+
+  it('rejects an incorrect current password without writing', async () => {
+    passwords.verify.mockResolvedValue(false);
+    await expect(
+      service.changePassword(principal, 'wrong password', 'new secure password'),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(repository.replacePassword).not.toHaveBeenCalled();
   });
 });

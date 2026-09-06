@@ -1,103 +1,102 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { changeStaffPassword, updateMyOperatorProfile } from '../lib/api';
 import EmployeeProfilePage from './EmployeeProfilePage';
-import { updateStaffProfile } from '../lib/api';
-import { supabase } from '../lib/supabase';
 
-const mockRetryProfile = vi.fn();
-
-vi.mock('../lib/api', () => ({
-  updateStaffProfile: vi.fn(),
-}));
-
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: {
-      updateUser: vi.fn(),
+const { auth } = vi.hoisted(() => ({
+  auth: {
+    session: {
+      user: {
+        id: 'user-1',
+        email: 'dana@example.test',
+        mustChangePassword: false,
+      },
+      business: { role: 'Provider' },
     },
-  },
-}));
-
-vi.mock('../context/AuthContext', () => ({
-  useAuth: () => ({
-    session: { user: { id: 'user-1', email: 'dana@example.com' } },
     profile: {
       id: 'user-1',
       first_name: 'דנה',
       last_name: 'לוי',
-      role: 'Employee',
-      phone: '050-1111111',
+      phone: '+972501111111',
+      membership_role: 'Provider',
     },
-    role: 'Employee',
-    loading: false,
-    retryProfile: mockRetryProfile,
-  }),
+    retryProfile: vi.fn(),
+  },
 }));
+
+vi.mock('../lib/api', () => ({
+  changeStaffPassword: vi.fn(),
+  updateMyOperatorProfile: vi.fn(),
+}));
+vi.mock('../context/AuthContext', () => ({ useAuth: () => auth }));
 
 describe('EmployeeProfilePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.session.user.mustChangePassword = false;
+    auth.retryProfile.mockResolvedValue(undefined);
   });
 
-  it('renders profile fields from auth context', () => {
-    render(<EmployeeProfilePage />);
-
-    expect(screen.getByRole('heading', { name: 'הפרופיל שלי' })).toBeInTheDocument();
-    expect(screen.getByLabelText('אימייל')).toHaveValue('dana@example.com');
-    expect(screen.getByLabelText('תפקיד')).toHaveValue('עובד/ת');
-    expect(screen.getByLabelText('שם פרטי')).toHaveValue('דנה');
-    expect(screen.getByLabelText('שם משפחה')).toHaveValue('לוי');
-    expect(screen.getByLabelText('טלפון')).toHaveValue('050-1111111');
-  });
-
-  it('saves name and phone then refreshes the auth profile', async () => {
-    updateStaffProfile.mockResolvedValue({
-      id: 'user-1',
-      first_name: 'דנית',
-      last_name: 'לוי',
-      phone: '050-2222222',
+  it('updates only the authenticated profile through NestJS', async () => {
+    updateMyOperatorProfile.mockResolvedValue({
+      firstName: 'דנית',
+      lastName: 'לוי',
+      phoneE164: '+972502222222',
     });
-
     render(<EmployeeProfilePage />);
-
     fireEvent.change(screen.getByLabelText('שם פרטי'), { target: { value: 'דנית' } });
-    fireEvent.change(screen.getByLabelText('טלפון'), { target: { value: '050-2222222' } });
+    fireEvent.change(screen.getByLabelText('טלפון'), {
+      target: { value: '+972502222222' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'שמור פרטים' }));
 
-    await waitFor(() => {
-      expect(updateStaffProfile).toHaveBeenCalledWith('user-1', {
-        first_name: 'דנית',
-        last_name: 'לוי',
-        phone: '050-2222222',
-      });
-    });
-    expect(await screen.findByText('הפרופיל עודכן בהצלחה.')).toBeInTheDocument();
-    expect(mockRetryProfile).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(updateMyOperatorProfile).toHaveBeenCalledWith({
+        firstName: 'דנית',
+        lastName: 'לוי',
+        phoneE164: '+972502222222',
+      })
+    );
+    expect(auth.retryProfile).toHaveBeenCalled();
   });
 
-  it('updates password via supabase auth', async () => {
-    supabase.auth.updateUser.mockResolvedValue({ data: {}, error: null });
-
+  it('requires and submits the current password', async () => {
+    changeStaffPassword.mockResolvedValue(null);
     render(<EmployeeProfilePage />);
-
-    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), { target: { value: 'secret1' } });
-    fireEvent.change(screen.getByLabelText('אימות סיסמה'), { target: { value: 'secret1' } });
+    fireEvent.change(screen.getByLabelText('סיסמה נוכחית'), {
+      target: { value: 'current-password' },
+    });
+    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), {
+      target: { value: 'new-secure-password' },
+    });
+    fireEvent.change(screen.getByLabelText('אימות סיסמה'), {
+      target: { value: 'new-secure-password' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'עדכן סיסמה' }));
 
-    await waitFor(() => {
-      expect(supabase.auth.updateUser).toHaveBeenCalledWith({ password: 'secret1' });
-    });
-    expect(await screen.findByText('הסיסמה עודכנה בהצלחה.')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(changeStaffPassword).toHaveBeenCalledWith(
+        'current-password',
+        'new-secure-password'
+      )
+    );
+    expect(auth.retryProfile).toHaveBeenCalled();
   });
 
-  it('rejects mismatched passwords without calling updateUser', async () => {
+  it('forces temporary-password users through password change first', () => {
+    auth.session.user.mustChangePassword = true;
     render(<EmployeeProfilePage />);
+    expect(screen.getByText(/זו הכניסה הראשונה שלך/)).toBeInTheDocument();
+    expect(screen.getByLabelText('סיסמה זמנית')).toBeInTheDocument();
+    expect(screen.queryByLabelText('שם פרטי')).not.toBeInTheDocument();
+  });
 
-    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), { target: { value: 'secret1' } });
+  it('rejects short or mismatched passwords locally', async () => {
+    render(<EmployeeProfilePage />);
+    fireEvent.change(screen.getByLabelText('סיסמה חדשה'), { target: { value: 'short' } });
     fireEvent.change(screen.getByLabelText('אימות סיסמה'), { target: { value: 'other' } });
     fireEvent.click(screen.getByRole('button', { name: 'עדכן סיסמה' }));
-
-    expect(await screen.findByText('הסיסמאות אינן תואמות.')).toBeInTheDocument();
-    expect(supabase.auth.updateUser).not.toHaveBeenCalled();
+    expect(await screen.findByText(/לפחות 12 תווים/)).toBeInTheDocument();
+    expect(changeStaffPassword).not.toHaveBeenCalled();
   });
 });

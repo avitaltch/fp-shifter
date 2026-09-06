@@ -21,8 +21,8 @@ export function addDaysString(n) {
   return toDateString(d);
 }
 
-// The booking server (business_now() in supabase/functions.sql) works in
-// Asia/Jerusalem. Customers may book from other timezones, so the date
+// The booking server works in the business timezone. Customers may book from
+// other timezones, so the date
 // picker bounds must follow the salon's calendar day, not the browser's.
 const JERUSALEM_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Jerusalem',
@@ -104,8 +104,19 @@ export function businessDateRangeToInstants(dateString, timeZone) {
   return { windowStartsAt: start.toISOString(), windowEndsAt: end.toISOString() };
 }
 
+/** Convert a business-local YYYY-MM-DD + HH:MM into an ISO instant. */
+export function businessLocalDateTimeToInstant(dateString, timeString, timeZone) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const [hour, minute] = timeString.split(':').map(Number);
+  return zonedDateTimeToInstant(year, month, day, hour, minute, timeZone).toISOString();
+}
+
 function zonedMidnightToInstant(year, month, day, timeZone) {
-  const desired = Date.UTC(year, month - 1, day);
+  return zonedDateTimeToInstant(year, month, day, 0, 0, timeZone);
+}
+
+function zonedDateTimeToInstant(year, month, day, hour, minute, timeZone) {
+  const desired = Date.UTC(year, month - 1, day, hour, minute);
   let candidate = desired;
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone,

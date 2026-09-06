@@ -288,7 +288,7 @@ export class ConfigurationRepository {
               u.last_name as "lastName",
               u.email::text as email,
               m.role,
-              u.disabled_at as "disabledAt",
+              coalesce(m.disabled_at, u.disabled_at) as "disabledAt",
               coalesce(
                 array_agg(ps.service_id order by ps.service_id)
                   filter (where ps.service_id is not null),
@@ -300,8 +300,9 @@ export class ConfigurationRepository {
          on ps.business_id = m.business_id
         and ps.provider_user_id = m.user_id
        where m.business_id = $1
-       group by u.id, m.role
-       order by u.disabled_at nulls first, u.first_name, u.last_name, u.id`,
+       group by u.id, m.role, m.disabled_at
+       order by coalesce(m.disabled_at, u.disabled_at) nulls first,
+                u.first_name, u.last_name, u.id`,
     );
   }
 
@@ -317,6 +318,7 @@ export class ConfigurationRepository {
          join users u on u.id = m.user_id
          where m.business_id = $1
            and m.user_id = $2
+           and m.disabled_at is null
            and u.disabled_at is null
        ) as exists`,
       [providerUserId],

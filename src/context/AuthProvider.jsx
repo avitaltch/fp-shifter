@@ -12,7 +12,11 @@ function toFrontendAuth(session) {
   const role = backendRole === 'Provider' ? 'Employee' : 'Admin';
   return {
     session: {
-      user: { id: session.user.id, email: session.user.email },
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        mustChangePassword: session.user.mustChangePassword,
+      },
       business: session.business,
       expiresInSeconds: session.expiresInSeconds,
     },
@@ -20,6 +24,8 @@ function toFrontendAuth(session) {
       id: session.user.id,
       first_name: session.user.firstName,
       last_name: session.user.lastName,
+      phone: session.user.phoneE164,
+      must_change_password: session.user.mustChangePassword,
       role,
       membership_role: backendRole,
       business_id: session.business.id,

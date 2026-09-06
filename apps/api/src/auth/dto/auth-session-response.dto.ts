@@ -12,6 +12,12 @@ export class AuthUserDto {
 
   @ApiProperty()
   lastName!: string;
+
+  @ApiProperty({ nullable: true, example: '+972501234567' })
+  phoneE164!: string | null;
+
+  @ApiProperty()
+  mustChangePassword!: boolean;
 }
 
 export class AuthBusinessDto {

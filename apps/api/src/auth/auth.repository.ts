@@ -17,11 +17,13 @@ interface LoginCandidateRow extends QueryResultRow {
   passwordHash: string;
   firstName: string;
   lastName: string;
+  phoneE164: string | null;
   disabledAt: Date | null;
   businessId: string;
   businessSlug: string;
   membershipId: string;
   role: MembershipRole;
+  mustChangePassword: boolean;
 }
 
 interface SessionPrincipalRow extends QueryResultRow {
@@ -30,10 +32,12 @@ interface SessionPrincipalRow extends QueryResultRow {
   email: string;
   firstName: string;
   lastName: string;
+  phoneE164: string | null;
   businessId: string;
   businessSlug: string;
   membershipId: string;
   role: MembershipRole;
+  mustChangePassword: boolean;
   refreshTokenHash: string;
   expiresAt: Date;
   revokedAt: Date | null;
@@ -74,16 +78,19 @@ export class AuthRepository {
               u.password_hash as "passwordHash",
               u.first_name as "firstName",
               u.last_name as "lastName",
+              u.phone_e164 as "phoneE164",
               u.disabled_at as "disabledAt",
               b.id as "businessId",
               b.slug as "businessSlug",
               m.id as "membershipId",
-              m.role
+              m.role,
+              u.must_change_password as "mustChangePassword"
        from users u
        join business_memberships m on m.user_id = u.id
        join businesses b on b.id = m.business_id
        where u.email = $1::citext
          and ($2::text is null or b.slug = $2)
+         and m.disabled_at is null
        order by b.slug`,
       [email, businessSlug ?? null],
     );
@@ -129,6 +136,7 @@ export class AuthRepository {
         `${this.sessionPrincipalSelect()}
          where s.refresh_token_hash = $1
            and u.disabled_at is null
+           and m.disabled_at is null
          for update of s`,
         [refreshTokenHash],
       );
@@ -203,6 +211,63 @@ export class AuthRepository {
     );
   }
 
+  async readPasswordHash(userId: string): Promise<string | null> {
+    const result = await this.pool.query<{ passwordHash: string }>(
+      `select password_hash as "passwordHash"
+       from users
+       where id = $1 and disabled_at is null`,
+      [userId],
+    );
+    return result.rows[0]?.passwordHash ?? null;
+  }
+
+  async replacePassword(
+    principal: AuthPrincipal,
+    expectedHash: string,
+    newHash: string,
+  ): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      const result = await client.query(
+        `update users u
+         set password_hash = $1, must_change_password = false
+         where u.id = $2
+           and u.password_hash = $3
+           and u.disabled_at is null
+           and exists (
+             select 1
+             from business_memberships m
+             where m.business_id = $4
+               and m.user_id = u.id
+               and m.disabled_at is null
+           )`,
+        [newHash, principal.userId, expectedHash, principal.businessId],
+      );
+      if (result.rowCount !== 1) {
+        await client.query('rollback');
+        return false;
+      }
+      await client.query(
+        `update auth_sessions
+         set revoked_at = coalesce(revoked_at, now())
+         where user_id = $1 and id <> $2 and revoked_at is null`,
+        [principal.userId, principal.sessionId],
+      );
+      await this.insertEvent(client, 'password_changed', {
+        userId: principal.userId,
+        businessId: principal.businessId,
+      });
+      await client.query('commit');
+      return true;
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async resolvePrincipal(input: {
     sessionId: string;
     userId: string;
@@ -215,7 +280,8 @@ export class AuthRepository {
          and s.business_id = $3
          and s.revoked_at is null
          and s.expires_at > now()
-         and u.disabled_at is null`,
+         and u.disabled_at is null
+         and m.disabled_at is null`,
       [input.sessionId, input.userId, input.businessId],
     );
     const row = result.rows[0];
@@ -251,10 +317,12 @@ export class AuthRepository {
         email: candidate.email,
         firstName: candidate.firstName,
         lastName: candidate.lastName,
+        phoneE164: candidate.phoneE164,
         businessId: candidate.businessId,
         businessSlug: candidate.businessSlug,
         membershipId: candidate.membershipId,
         role: candidate.role,
+        mustChangePassword: candidate.mustChangePassword,
       },
     };
   }
@@ -284,10 +352,12 @@ export class AuthRepository {
                    u.email::text as email,
                    u.first_name as "firstName",
                    u.last_name as "lastName",
+                   u.phone_e164 as "phoneE164",
                    s.business_id as "businessId",
                    b.slug as "businessSlug",
                    s.membership_id as "membershipId",
                    m.role,
+                   u.must_change_password as "mustChangePassword",
                    s.refresh_token_hash as "refreshTokenHash",
                    s.expires_at as "expiresAt",
                    s.revoked_at as "revokedAt"
@@ -307,10 +377,12 @@ export class AuthRepository {
       email: row.email,
       firstName: row.firstName,
       lastName: row.lastName,
+      phoneE164: row.phoneE164,
       businessId: row.businessId,
       businessSlug: row.businessSlug,
       membershipId: row.membershipId,
       role: row.role,
+      mustChangePassword: row.mustChangePassword,
     };
   }
 
@@ -320,10 +392,12 @@ export class AuthRepository {
       email: row.email,
       firstName: row.firstName,
       lastName: row.lastName,
+      phoneE164: row.phoneE164,
       businessId: row.businessId,
       businessSlug: row.businessSlug,
       membershipId: row.membershipId,
       role: row.role,
+      mustChangePassword: row.mustChangePassword,
       passwordHash: '',
     };
   }

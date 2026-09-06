@@ -8,6 +8,7 @@ import {
   toTimeDisplay,
   dateInTimezone,
   businessDateRangeToInstants,
+  businessLocalDateTimeToInstant,
   formatHebrewDate,
   formatDuration,
   weekdayIndex,
@@ -146,6 +147,12 @@ describe('business timezone boundaries', () => {
       windowStartsAt: '2030-07-06T21:00:00.000Z',
       windowEndsAt: '2030-07-07T21:00:00.000Z',
     });
+  });
+
+  it('converts business-local wall time to an exact instant', () => {
+    expect(
+      businessLocalDateTimeToInstant('2030-01-07', '10:30', 'Asia/Jerusalem')
+    ).toBe('2030-01-07T08:30:00.000Z');
   });
 });
 

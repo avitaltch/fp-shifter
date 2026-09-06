@@ -22,11 +22,12 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { AuthCookieService } from './auth-cookie.service';
-import { CurrentPrincipal, Public } from './auth.decorators';
+import { CurrentPrincipal, PasswordChangeAllowed, Public } from './auth.decorators';
 import { AuthService } from './auth.service';
 import type { AuthPrincipal } from './auth.types';
 import { AuthSessionResponseDto } from './dto/auth-session-response.dto';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 interface HeaderResponse {
   setHeader(name: string, value: string): void;
@@ -100,6 +101,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @PasswordChangeAllowed()
   @ApiBearerAuth('access-token')
   @ApiOperation({ summary: 'Read the authenticated user and active membership' })
   @ApiOkResponse({
@@ -113,6 +115,25 @@ export class AuthController {
   })
   me(@CurrentPrincipal() principal: AuthPrincipal) {
     return this.auth.me(principal);
+  }
+
+
+  @Post('password')
+  @PasswordChangeAllowed()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Change the authenticated user password' })
+  @ApiNoContentResponse()
+  @ApiUnauthorizedResponse({ description: 'Current password is incorrect' })
+  async changePassword(
+    @CurrentPrincipal() principal: AuthPrincipal,
+    @Body() request: ChangePasswordDto,
+  ): Promise<void> {
+    await this.auth.changePassword(
+      principal,
+      request.currentPassword,
+      request.newPassword,
+    );
   }
 }
 

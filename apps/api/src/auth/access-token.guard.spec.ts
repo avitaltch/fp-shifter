@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   type ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -16,10 +17,12 @@ const principal: AuthPrincipal = {
   email: 'owner@example.com',
   firstName: 'Dana',
   lastName: 'Owner',
+  phoneE164: null,
   businessId: 'business-1',
   businessSlug: 'happy-pets-demo',
   membershipId: 'membership-1',
   role: 'Owner',
+  mustChangePassword: false,
 };
 
 function contextFor(request: AuthenticatedRequest): ExecutionContext {
@@ -91,5 +94,35 @@ describe('AccessTokenGuard', () => {
     await expect(guard.canActivate(contextFor(revoked))).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+
+  it('blocks temporary-password sessions outside password-safe routes', async () => {
+    repository.resolvePrincipal.mockResolvedValue({
+      ...principal,
+      mustChangePassword: true,
+    });
+    const request = {
+      get: vi.fn().mockReturnValue('Bearer signed.access.token'),
+    } as unknown as AuthenticatedRequest;
+
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      constructor: ForbiddenException,
+      response: { code: 'PASSWORD_CHANGE_REQUIRED' },
+    });
+  });
+
+  it('allows explicitly password-safe routes during forced password change', async () => {
+    reflector.getAllAndOverride
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    repository.resolvePrincipal.mockResolvedValue({
+      ...principal,
+      mustChangePassword: true,
+    });
+    const request = {
+      get: vi.fn().mockReturnValue('Bearer signed.access.token'),
+    } as unknown as AuthenticatedRequest;
+
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
   });
 });

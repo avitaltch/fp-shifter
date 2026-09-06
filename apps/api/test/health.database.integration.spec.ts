@@ -2034,6 +2034,150 @@ describe('AppModule with PostgreSQL', () => {
     }
   });
 
+  it('creates local staff, enforces first-login password change, and revokes deactivated sessions', async () => {
+    const ownerId = '00000000-0000-4000-8000-000000000201';
+    const ownerEmail = 'groomer@happy-pets.demo';
+    const ownerPassword = 'Staff Lifecycle Owner Password!42';
+    const temporaryPassword = 'Temporary Provider Password!42';
+    const newPassword = 'Permanent Provider Password!42';
+    const staffEmail = `provider-${randomUUID()}@example.test`;
+    const ownerPasswordHash = await passwordService.hash(ownerPassword);
+    const auditBaseline = await databaseClient.query<{ id: string }>(
+      `select coalesce(max(id), 0)::text as id from operator_audit_events`,
+    );
+    const auditBaselineId = auditBaseline.rows[0]?.id ?? '0';
+    let staffId: string | undefined;
+
+    await databaseClient.query(
+      `update users
+       set password_hash = $2, disabled_at = null, must_change_password = false
+       where id = $1`,
+      [ownerId, ownerPasswordHash],
+    );
+    await databaseClient.query(
+      `update business_memberships set disabled_at = null
+       where business_id = $1 and user_id = $2`,
+      [HAPPY_PETS_BUSINESS_ID, ownerId],
+    );
+    await databaseClient.query(
+      `delete from rate_limit_buckets where limiter like 'auth-%'`,
+    );
+
+    try {
+      const ownerLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: ownerEmail, password: ownerPassword })
+        .expect(200);
+      const ownerToken = String(ownerLogin.body.accessToken);
+
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/operator/staff')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          email: staffEmail,
+          firstName: 'Local',
+          lastName: 'Provider',
+          phoneE164: '+972501234567',
+          role: 'Provider',
+          temporaryPassword,
+        })
+        .expect(201);
+      staffId = String(created.body.userId);
+      expect(created.body).toMatchObject({
+        email: staffEmail,
+        role: 'Provider',
+        mustChangePassword: true,
+      });
+
+      await request(app.getHttpServer())
+        .put(`/api/v1/operator/providers/${staffId}/skills`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ serviceIds: [PET_TRIM_SERVICE_ID] })
+        .expect(200);
+
+      const staffLogin = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: staffEmail, password: temporaryPassword })
+        .expect(200);
+      const staffToken = String(staffLogin.body.accessToken);
+      expect(staffLogin.body.user.mustChangePassword).toBe(true);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/operator/locations')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(403)
+        .expect(({ body }) => {
+          expect(body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+        });
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/password')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .send({ currentPassword: temporaryPassword, newPassword })
+        .expect(204);
+      await request(app.getHttpServer())
+        .get('/api/v1/operator/locations')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/operator/staff/${staffId}/deactivate`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(201)
+        .expect(({ body }) => {
+          expect(body.disabledAt).toBeTruthy();
+        });
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${staffToken}`)
+        .expect(401);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/operator/staff/${staffId}/reactivate`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: staffEmail, password: newPassword })
+        .expect(200)
+        .expect(({ body }) => {
+          expect(body.user.mustChangePassword).toBe(false);
+        });
+
+      const actions = await databaseClient.query<{ action: string }>(
+        `select action from operator_audit_events
+         where id > $1 and resource_id = $2
+         order by id`,
+        [auditBaselineId, staffId],
+      );
+      expect(actions.rows.map(({ action }) => action)).toEqual(
+        expect.arrayContaining([
+          'staff.created',
+          'staff.deactivated',
+          'staff.reactivated',
+        ]),
+      );
+    } finally {
+      if (staffId) {
+        await databaseClient.query(`delete from users where id = $1`, [staffId]);
+      }
+      await databaseClient.query(`delete from operator_audit_events where id > $1`, [
+        auditBaselineId,
+      ]);
+      await databaseClient.query(`delete from auth_sessions where user_id = $1`, [
+        ownerId,
+      ]);
+      await databaseClient.query(
+        `delete from rate_limit_buckets where limiter like 'auth-%'`,
+      );
+      await databaseClient.query(
+        `update users
+         set password_hash = '!demo-account-disabled', must_change_password = false
+         where id = $1`,
+        [ownerId],
+      );
+    }
+  });
+
   it('serves tenant-safe manager and provider operations with audited status changes', async () => {
     const ownerId = '00000000-0000-4000-8000-000000000201';
     const providerId = '00000000-0000-4000-8000-000000000202';

@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
-import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, UserX, CircleAlert, Sparkles } from 'lucide-react';
-import { getDashboardData, cancelAppointment, unassignShift } from '../lib/api';
+import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, CircleAlert, Sparkles } from 'lucide-react';
+import { listOperatorAppointments, cancelOperatorAppointment } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
-import { todayString, addDaysString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
+import { todayString, addDaysString, toTimeDisplay, formatHebrewDate, dateInTimezone } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import Alert from '../components/Alert/Alert';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
@@ -14,64 +14,37 @@ const STATUS_LABELS = {
   Pending: 'ממתין לשיבוץ',
   Confirmed: 'מאושר',
   Completed: 'הושלם',
+  RequiresAttention: 'דורש תשומת לב',
 };
 
 const ManagerDashboardPage = () => {
-  // Cancelled appointments are filtered out in the query
   const fetchDashboard = useCallback(
-    async () => (await getDashboardData(todayString(), addDaysString(6))).appointments || [],
+    async () => (await listOperatorAppointments(todayString(), addDaysString(6))).filter(
+      (appointment) => appointment.status !== 'Cancelled'
+    ),
     []
   );
   const { data, setData, loading, error, refetch } = useAsyncData(fetchDashboard, {
     errorMessage: 'שגיאה בטעינת נתוני הדאשבורד.',
   });
-  // A failed cancel/unassign usually means the list is stale — refetch on error.
+  // A failed mutation usually means the list is stale — refetch on error.
   const { busyKeys, isBusy, message, run } = useAction({ onError: refetch });
 
   const appointments = data ?? [];
 
   const handleCancel = async (apt) => {
-    const customerName = `${apt.customers?.first_name || ''} ${apt.customers?.last_name || ''}`.trim();
+    const customerName = `${apt.customerFirstName || ''} ${apt.customerLastName || ''}`.trim();
+    const visitDate = dateInTimezone(apt.startsAt, apt.timezone);
     const confirmed = window.confirm(
-      `לבטל את התור של ${customerName || 'הלקוח/ה'} ב-${formatHebrewDate(apt.visit_date)}? השעות ישוחררו להזמנות חדשות.`
+      `לבטל את התור של ${customerName || 'הלקוח/ה'} ב-${formatHebrewDate(visitDate)}? השעות ישוחררו להזמנות חדשות.`
     );
     if (!confirmed) return;
 
-    // cancel_appointment RPC: status + item soft-delete in one transaction,
-    // so the booked span is actually freed for new bookings.
-    const { ok } = await run(apt.id, () => cancelAppointment(apt.id), {
+    const { ok } = await run(apt.id, () => cancelOperatorAppointment(apt.id), {
       success: 'התור בוטל והשעות שוחררו.',
       errorFallback: 'שגיאה בביטול התור.',
     });
     if (ok) setData((prev) => prev.filter((a) => a.id !== apt.id));
-  };
-
-  const handleUnassign = async (apt, item) => {
-    const employeeName = item.users?.first_name || 'העובד/ת';
-    const confirmed = window.confirm(
-      `לבטל את השיבוץ של ${employeeName} לטיפול "${item.service_types?.name || ''}"? הטיפול יחזור לרשימת הממתינים לשיבוץ.`
-    );
-    if (!confirmed) return;
-
-    // unassign_shift RPC: admin-only, blocks past items server-side.
-    const { ok } = await run(`unassign:${item.id}`, () => unassignShift(item.id), {
-      success: 'השיבוץ בוטל והטיפול ממתין לשיבוץ מחדש.',
-      errorFallback: 'שגיאה בביטול השיבוץ.',
-    });
-    if (ok) {
-      setData((prev) =>
-        prev.map((a) =>
-          a.id === apt.id
-            ? {
-                ...a,
-                appointment_items: a.appointment_items.map((i) =>
-                  i.id === item.id ? { ...i, user_id: null, users: null } : i
-                ),
-              }
-            : a
-        )
-      );
-    }
   };
 
   if (loading) return (
@@ -82,21 +55,23 @@ const ManagerDashboardPage = () => {
   if (error) return <PageContainer size="lg" className="dashboard-page"><p className="error-text">{error}</p></PageContainer>;
 
   const todayStr = todayString();
-  const todayAppointments = appointments.filter((a) => a.visit_date === todayStr);
-  const futureAppointments = appointments.filter((a) => a.visit_date !== todayStr);
+  const todayAppointments = appointments.filter(
+    (appointment) => dateInTimezone(appointment.startsAt, appointment.timezone) === todayStr
+  );
+  const futureAppointments = appointments.filter(
+    (appointment) => dateInTimezone(appointment.startsAt, appointment.timezone) !== todayStr
+  );
 
   const todayItemsCount = todayAppointments.reduce(
-    (acc, apt) => acc + (apt.appointment_items?.length || 0), 0
+    (acc, apt) => acc + (apt.steps?.length || 0), 0
   );
 
   // Unique employees working today (by id, not first name)
   const activeEmployees = new Set();
-  let unassignedToday = 0;
+  let attentionToday = 0;
   todayAppointments.forEach((apt) => {
-    apt.appointment_items?.forEach((item) => {
-      if (item.user_id) activeEmployees.add(item.user_id);
-      else unassignedToday += 1;
-    });
+    apt.steps?.forEach((item) => activeEmployees.add(item.providerUserId));
+    if (apt.status === 'RequiresAttention') attentionToday += 1;
   });
 
   return (
@@ -133,11 +108,11 @@ const ManagerDashboardPage = () => {
             <p className="stat-number">{activeEmployees.size}</p>
           </div>
         </div>
-        <div className={`stat-card stat-card--amber ${unassignedToday > 0 ? 'alert-card' : ''}`} style={{ '--stat-delay': '210ms' }}>
+        <div className={`stat-card stat-card--amber ${attentionToday > 0 ? 'alert-card' : ''}`} style={{ '--stat-delay': '210ms' }}>
           <div className="stat-icon"><CircleAlert /></div>
           <div className="stat-content">
-            <h3>ממתינים לשיבוץ</h3>
-            <p className="stat-number">{unassignedToday}</p>
+            <h3>דורשים תשומת לב</h3>
+            <p className="stat-number">{attentionToday}</p>
           </div>
         </div>
       </div>
@@ -149,18 +124,18 @@ const ManagerDashboardPage = () => {
         ) : (
           <div className="appointments-list">
             {todayAppointments.map((apt, appointmentIndex) => {
-              const items = [...(apt.appointment_items || [])].sort((a, b) =>
-                a.start_time.localeCompare(b.start_time)
+              const items = [...(apt.steps || [])].sort(
+                (a, b) => a.sequenceNumber - b.sequenceNumber
               );
               return (
                 <div key={apt.id} className="appointment-card" style={{ '--appointment-index': appointmentIndex }}>
                   <div className="apt-header">
                     <div className="apt-customer">
-                      <h3>לקוח/ה: {apt.customers?.first_name} {apt.customers?.last_name}</h3>
-                      {apt.customers?.phone && (
-                        <a className="customer-phone" href={`tel:${apt.customers.phone}`}>
+                      <h3>לקוח/ה: {apt.customerFirstName} {apt.customerLastName}</h3>
+                      {apt.customerPhoneE164 && (
+                        <a className="customer-phone" href={`tel:${apt.customerPhoneE164}`}>
                           <Phone size={14} />
-                          {apt.customers.phone}
+                          {apt.customerPhoneE164}
                         </a>
                       )}
                     </div>
@@ -173,7 +148,7 @@ const ManagerDashboardPage = () => {
                         className="cancel-apt-btn"
                         onClick={() => handleCancel(apt)}
                         disabled={busyKeys.size > 0}
-                        aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
+                        aria-label={`ביטול התור של ${apt.customerFirstName || ''}`}
                       >
                         <XCircle size={16} />
                         {isBusy(apt.id) ? 'מבטל...' : 'ביטול תור'}
@@ -185,27 +160,11 @@ const ManagerDashboardPage = () => {
                     {items.map((item, index) => (
                       <div key={item.id} className="timeline-item">
                         <div className="time-block">
-                          {toTimeDisplay(item.start_time)} - {toTimeDisplay(item.end_time)}
+                          {toTimeDisplay(item.startsAt, apt.timezone)} - {toTimeDisplay(item.endsAt, apt.timezone)}
                         </div>
                         <div className="details-block">
-                          <strong>{item.service_types?.name}</strong>
-                          <span>
-                            {item.users?.first_name
-                              ? `ע"י ${item.users.first_name}`
-                              : 'טרם שובץ'}
-                          </span>
-                          {item.user_id && (
-                            <button
-                              type="button"
-                              className="unassign-btn"
-                              onClick={() => handleUnassign(apt, item)}
-                              disabled={busyKeys.size > 0}
-                              aria-label={`ביטול שיבוץ של ${item.users?.first_name || ''} לטיפול ${item.service_types?.name || ''}`}
-                            >
-                              <UserX size={14} />
-                              {isBusy(`unassign:${item.id}`) ? 'מבטל שיבוץ...' : 'ביטול שיבוץ'}
-                            </button>
-                          )}
+                          <strong>{item.serviceName}</strong>
+                          <span>ע"י {item.providerFirstName} {item.providerLastName}</span>
                         </div>
                         {index < items.length - 1 && (
                           <ArrowLeft className="chain-arrow" aria-hidden="true" />
@@ -228,17 +187,17 @@ const ManagerDashboardPage = () => {
               <div key={apt.id} className="appointment-card compact-card" style={{ '--appointment-index': appointmentIndex }}>
                 <div className="apt-header">
                   <h3>
-                    {formatHebrewDate(apt.visit_date)} | {apt.customers?.first_name}{' '}
-                    {apt.customers?.last_name}
+                    {formatHebrewDate(dateInTimezone(apt.startsAt, apt.timezone))} | {apt.customerFirstName}{' '}
+                    {apt.customerLastName}
                   </h3>
                   <div className="apt-header-actions">
-                    <span className="compact-details">{apt.appointment_items?.length || 0} טיפולים</span>
+                    <span className="compact-details">{apt.steps?.length || 0} טיפולים</span>
                     <button
                       type="button"
                       className="cancel-apt-btn"
                       onClick={() => handleCancel(apt)}
                       disabled={busyKeys.size > 0}
-                      aria-label={`ביטול התור של ${apt.customers?.first_name || ''}`}
+                      aria-label={`ביטול התור של ${apt.customerFirstName || ''}`}
                     >
                       <XCircle size={16} />
                       {isBusy(apt.id) ? 'מבטל...' : 'ביטול'}

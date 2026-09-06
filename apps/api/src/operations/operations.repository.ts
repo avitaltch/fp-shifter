@@ -393,7 +393,9 @@ export class OperationsRepository {
               ) as conflict
        from business_memberships bm
        join users u on u.id = bm.user_id
-       where bm.business_id = $1 and u.disabled_at is null
+       where bm.business_id = $1
+         and bm.disabled_at is null
+         and u.disabled_at is null
        order by u.first_name, u.last_name, bm.user_id`,
       [step.serviceId, step.locationId, step.startsAt, step.endsAt, step.id],
     );

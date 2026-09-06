@@ -1,10 +1,10 @@
 import { useCallback } from 'react';
 import { Clock, User, CheckCircle, Calendar as CalendarIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { listMyShifts, updateShiftStatus } from '../lib/api';
+import { listMyOperatorSteps, updateOperatorStepStatus } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
-import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
+import { todayString, addDaysString, toTimeDisplay, formatHebrewDate, dateInTimezone } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import PageHeader from '../components/PageHeader/PageHeader';
 import Alert from '../components/Alert/Alert';
@@ -12,19 +12,22 @@ import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './MyShiftsPage.css';
 
-// Scheduled -> In_Progress -> Done. Done is terminal (no accidental reset).
-const NEXT_STATUS = { Scheduled: 'In_Progress', In_Progress: 'Done' };
+// Scheduled -> InProgress -> Completed. Completed is terminal.
+const NEXT_STATUS = { Scheduled: 'InProgress', InProgress: 'Completed' };
 
 const STATUS_LABELS = {
   Scheduled: 'מתוכנן - לחץ להתחלה',
-  In_Progress: 'בביצוע - לחץ לסיום',
+  InProgress: 'בביצוע - לחץ לסיום',
 };
 
 const MyShiftsPage = () => {
   const { session, profile } = useAuth();
   const userId = session?.user?.id;
 
-  const fetchShifts = useCallback(() => listMyShifts(userId, todayString()), [userId]);
+  const fetchShifts = useCallback(
+    () => listMyOperatorSteps(todayString(), addDaysString(30)),
+    []
+  );
   const { data, setData, loading, error } = useAsyncData(fetchShifts, {
     enabled: Boolean(userId),
     errorMessage: 'שגיאה בטעינת משמרות. יש לרענן.',
@@ -38,7 +41,7 @@ const MyShiftsPage = () => {
     if (!nextStatus) return;
     const { ok } = await run(
       task.id,
-      () => updateShiftStatus(task.id, userId, nextStatus),
+      () => updateOperatorStepStatus(task.id, nextStatus),
       { errorFallback: 'שגיאה בעדכון הסטטוס.' }
     );
     if (ok) {
@@ -50,7 +53,8 @@ const MyShiftsPage = () => {
 
   // Group by work date so upcoming days are visible, not just today
   const byDate = tasks.reduce((acc, task) => {
-    (acc[task.work_date] = acc[task.work_date] || []).push(task);
+    const workDate = dateInTimezone(task.startsAt, task.timezone);
+    (acc[workDate] = acc[workDate] || []).push(task);
     return acc;
   }, {});
 
@@ -75,27 +79,26 @@ const MyShiftsPage = () => {
                 <CalendarIcon size={18} /> {formatHebrewDate(date)}
               </h2>
               {dateTasks.map((task) => {
-                const customer = task.appointments?.customers;
-                const customerName = customer
-                  ? `${customer.first_name} ${customer.last_name}`
-                  : 'לקוח לא ידוע';
+                const customerName =
+                  `${task.customerFirstName || ''} ${task.customerLastName || ''}`.trim() ||
+                  'לקוח לא ידוע';
 
                 return (
                   <div key={task.id} className="task-card">
                     <div className="task-time">
                       <Clock size={16} />
-                      <span>{toTimeDisplay(task.start_time)} - {toTimeDisplay(task.end_time)}</span>
+                      <span>{toTimeDisplay(task.startsAt, task.timezone)} - {toTimeDisplay(task.endsAt, task.timezone)}</span>
                     </div>
                     <div className="task-details">
-                      <h3>{task.service_types?.name}</h3>
+                      <h3>{task.serviceName}</h3>
                       <p>לקוח/ה: <strong>{customerName}</strong></p>
                       <button
                         className={`status-btn ${task.status.toLowerCase()}`}
                         onClick={() => advanceStatus(task)}
-                        disabled={task.status === 'Done'}
+                        disabled={task.status === 'Completed'}
                       >
                         {STATUS_LABELS[task.status]}
-                        {task.status === 'Done' && (
+                        {task.status === 'Completed' && (
                           <><CheckCircle size={14} style={{ marginLeft: '4px' }} /> הסתיים</>
                         )}
                       </button>

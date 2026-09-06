@@ -2,10 +2,14 @@ import {
   type CanActivate,
   type ExecutionContext,
   Injectable,
+  ForbiddenException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AUTH_PUBLIC_KEY } from './auth.constants';
+import {
+  AUTH_PASSWORD_CHANGE_ALLOWED_KEY,
+  AUTH_PUBLIC_KEY,
+} from './auth.constants';
 import type { AuthenticatedRequest } from './auth.types';
 import { AccessTokenService } from './access-token.service';
 import { AuthRepository } from './auth.repository';
@@ -37,6 +41,16 @@ export class AccessTokenGuard implements CanActivate {
     });
     if (!principal) throw authenticationRequired();
     request.auth = principal;
+    const passwordChangeAllowed = this.reflector.getAllAndOverride<boolean>(
+      AUTH_PASSWORD_CHANGE_ALLOWED_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (principal.mustChangePassword && !passwordChangeAllowed) {
+      throw new ForbiddenException({
+        code: 'PASSWORD_CHANGE_REQUIRED',
+        message: 'Change the temporary password before continuing',
+      });
+    }
     return true;
   }
 }

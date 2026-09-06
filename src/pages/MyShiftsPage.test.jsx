@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import MyShiftsPage from './MyShiftsPage';
-import { listMyShifts, updateShiftStatus } from '../lib/api';
-import { todayString, formatHebrewDate } from '../lib/dates';
+import { listMyOperatorSteps, updateOperatorStepStatus } from '../lib/api';
+import { addDaysString, todayString, formatHebrewDate } from '../lib/dates';
 
 vi.mock('../lib/api', () => ({
-  listMyShifts: vi.fn(),
-  updateShiftStatus: vi.fn(),
+  listMyOperatorSteps: vi.fn(),
+  updateOperatorStepStatus: vi.fn(),
 }));
 
 vi.mock('../context/AuthContext', () => ({
@@ -22,44 +22,47 @@ vi.mock('../context/AuthContext', () => ({
 const mockShifts = [
   {
     id: 't1',
-    work_date: '2026-07-20',
-    start_time: '10:00:00',
-    end_time: '11:00:00',
+    startsAt: '2026-07-20T10:00:00.000Z',
+    endsAt: '2026-07-20T11:00:00.000Z',
+    timezone: 'UTC',
     status: 'Scheduled',
-    service_types: { name: 'תספורת' },
-    appointments: { visit_date: '2026-07-20', customers: { first_name: 'רות', last_name: 'מזרחי' } },
+    serviceName: 'תספורת',
+    customerFirstName: 'רות',
+    customerLastName: 'מזרחי',
   },
   {
     id: 't2',
-    work_date: '2026-07-20',
-    start_time: '12:00:00',
-    end_time: '13:00:00',
-    status: 'Done',
-    service_types: { name: 'צבע' },
-    appointments: { visit_date: '2026-07-20', customers: { first_name: 'רות', last_name: 'מזרחי' } },
+    startsAt: '2026-07-20T12:00:00.000Z',
+    endsAt: '2026-07-20T13:00:00.000Z',
+    timezone: 'UTC',
+    status: 'Completed',
+    serviceName: 'צבע',
+    customerFirstName: 'רות',
+    customerLastName: 'מזרחי',
   },
   {
     id: 't3',
-    work_date: '2026-07-21',
-    start_time: '09:00:00',
-    end_time: '09:30:00',
-    status: 'In_Progress',
-    service_types: { name: 'פן' },
-    appointments: { visit_date: '2026-07-21', customers: { first_name: 'יעל', last_name: 'כהן' } },
+    startsAt: '2026-07-21T09:00:00.000Z',
+    endsAt: '2026-07-21T09:30:00.000Z',
+    timezone: 'UTC',
+    status: 'InProgress',
+    serviceName: 'פן',
+    customerFirstName: 'יעל',
+    customerLastName: 'כהן',
   },
 ];
 
 describe('MyShiftsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listMyShifts.mockResolvedValue(mockShifts);
+    listMyOperatorSteps.mockResolvedValue(mockShifts);
   });
 
   it('fetches shifts for the logged-in user from today onwards', async () => {
     render(<MyShiftsPage />);
 
     await waitFor(() => {
-      expect(listMyShifts).toHaveBeenCalledWith('user-1', todayString());
+      expect(listMyOperatorSteps).toHaveBeenCalledWith(todayString(), addDaysString(30));
     });
     expect(await screen.findByText('תספורת')).toBeInTheDocument();
   });
@@ -85,41 +88,41 @@ describe('MyShiftsPage', () => {
     expect(screen.getByText('פן')).toBeInTheDocument();
   });
 
-  it('advances Scheduled -> In_Progress through the api with the owner id', async () => {
-    updateShiftStatus.mockResolvedValue({ id: 't1', status: 'In_Progress' });
+  it('advances Scheduled -> InProgress through the authenticated api', async () => {
+    updateOperatorStepStatus.mockResolvedValue({ id: 't1', status: 'InProgress' });
     render(<MyShiftsPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'מתוכנן - לחץ להתחלה' }));
 
     await waitFor(() => {
-      expect(updateShiftStatus).toHaveBeenCalledWith('t1', 'user-1', 'In_Progress');
+      expect(updateOperatorStepStatus).toHaveBeenCalledWith('t1', 'InProgress');
     });
     // t1 and t3 are now both In_Progress
     expect(screen.getAllByRole('button', { name: 'בביצוע - לחץ לסיום' })).toHaveLength(2);
   });
 
-  it('advances In_Progress -> Done', async () => {
-    updateShiftStatus.mockResolvedValue({ id: 't3', status: 'Done' });
+  it('advances InProgress -> Completed', async () => {
+    updateOperatorStepStatus.mockResolvedValue({ id: 't3', status: 'Completed' });
     render(<MyShiftsPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'בביצוע - לחץ לסיום' }));
 
     await waitFor(() => {
-      expect(updateShiftStatus).toHaveBeenCalledWith('t3', 'user-1', 'Done');
+      expect(updateOperatorStepStatus).toHaveBeenCalledWith('t3', 'Completed');
     });
   });
 
-  it('renders Done as terminal: button disabled and clicking never calls the api', async () => {
+  it('renders Completed as terminal: button disabled and clicking never calls the api', async () => {
     render(<MyShiftsPage />);
     const doneBtn = await screen.findByRole('button', { name: /הסתיים/ });
 
     expect(doneBtn).toBeDisabled();
     fireEvent.click(doneBtn);
-    expect(updateShiftStatus).not.toHaveBeenCalled();
+    expect(updateOperatorStepStatus).not.toHaveBeenCalled();
   });
 
   it('shows a friendly error when the status update is rejected (not the owner)', async () => {
-    updateShiftStatus.mockRejectedValue(new Error('SHIFT_NOT_YOURS'));
+    updateOperatorStepStatus.mockRejectedValue(new Error('SHIFT_NOT_YOURS'));
     render(<MyShiftsPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'מתוכנן - לחץ להתחלה' }));
@@ -130,7 +133,7 @@ describe('MyShiftsPage', () => {
   });
 
   it('shows an empty state when there are no shifts', async () => {
-    listMyShifts.mockResolvedValue([]);
+    listMyOperatorSteps.mockResolvedValue([]);
     render(<MyShiftsPage />);
 
     expect(
@@ -139,17 +142,18 @@ describe('MyShiftsPage', () => {
   });
 
   it('shows an error message when fetching fails', async () => {
-    listMyShifts.mockRejectedValue(new Error('network'));
+    listMyOperatorSteps.mockRejectedValue(new Error('network'));
     render(<MyShiftsPage />);
 
     expect(await screen.findByText('שגיאה בטעינת משמרות. יש לרענן.')).toBeInTheDocument();
   });
 
   it('falls back to "לקוח לא ידוע" when the customer join is missing', async () => {
-    listMyShifts.mockResolvedValue([
+    listMyOperatorSteps.mockResolvedValue([
       {
         ...mockShifts[0],
-        appointments: { visit_date: '2026-07-20', customers: null },
+        customerFirstName: null,
+        customerLastName: null,
       },
     ]);
     render(<MyShiftsPage />);

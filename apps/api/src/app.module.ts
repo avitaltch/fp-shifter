@@ -8,6 +8,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigurationModule } from './configuration/configuration.module';
 import { OperationsModule } from './operations/operations.module';
+import { StaffingModule } from './staffing/staffing.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OperationsModule } from './operations/operations.module';
     AuthModule,
     ConfigurationModule,
     OperationsModule,
+    StaffingModule,
     HealthModule,
     NotificationsModule,
     SchedulingModule,

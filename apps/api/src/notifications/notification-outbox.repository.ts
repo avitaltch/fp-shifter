@@ -259,6 +259,7 @@ export class NotificationOutboxRepository {
        join users u on u.id = bm.user_id
        where bm.business_id = $1
          and bm.role in ('Owner', 'Manager')
+         and bm.disabled_at is null
          and u.disabled_at is null
        order by case bm.role when 'Owner' then 0 else 1 end, bm.created_at, u.id
        limit 1`,

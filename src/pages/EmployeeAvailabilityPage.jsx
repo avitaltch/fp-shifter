@@ -1,7 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Calendar, Clock, CheckCircle, Trash2, CalendarRange } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { listMyAvailability, addAvailability, addAvailabilityBulk, deleteAvailability } from '../lib/api';
+import {
+  createOperatorAvailability,
+  deleteOperatorAvailability,
+  listOperatorAvailability,
+  listOperatorLocations,
+} from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
 import {
@@ -15,6 +20,10 @@ import {
   startOfNextMonthString,
   endOfNextMonthString,
   datesInRange,
+  addDaysString,
+  businessDateRangeToInstants,
+  businessLocalDateTimeToInstant,
+  dateInTimezone,
 } from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import PageHeader from '../components/PageHeader/PageHeader';
@@ -33,6 +42,7 @@ const TIME_OPTIONS = Array.from({ length: 31 }, (_, i) => {
 const WEEKDAY_LABELS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 // Default: Sunday–Thursday on, Friday–Saturday off
 const DEFAULT_WORKDAYS = [true, true, true, true, true, false, false];
+const EMPTY_LIST = [];
 
 const BULK_ACTIONS = [
   { key: 'thisWeek', label: 'פתח את השבוע' },
@@ -60,11 +70,7 @@ function rangeForBulk(kind) {
 }
 
 function sortEntries(list) {
-  return [...list].sort(
-    (a, b) =>
-      a.available_date.localeCompare(b.available_date) ||
-      a.start_time.localeCompare(b.start_time)
-  );
+  return [...list].sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
 }
 
 const EmployeeAvailabilityPage = () => {
@@ -74,25 +80,52 @@ const EmployeeAvailabilityPage = () => {
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('16:00');
   const [workdays, setWorkdays] = useState(DEFAULT_WORKDAYS);
+  const [selectedLocationId, setSelectedLocationId] = useState('');
 
-  const fetchEntries = useCallback(() => listMyAvailability(userId, todayString()), [userId]);
+  const fetchEntries = useCallback(async () => {
+    const locations = await listOperatorLocations();
+    const primary = locations.find((location) => location.isPrimary) ?? locations[0];
+    if (!primary) return { locations: [], entries: [] };
+    const from = businessDateRangeToInstants(todayString(), primary.timezone).windowStartsAt;
+    const to = businessDateRangeToInstants(addDaysString(92), primary.timezone).windowEndsAt;
+    const entries = await listOperatorAvailability({ from, to });
+    return { locations, entries };
+  }, []);
   const { data, setData, loading, error } = useAsyncData(fetchEntries, {
     enabled: Boolean(userId),
     errorMessage: 'שגיאה בטעינת הזמינות הקיימת.',
   });
   const { isBusy, message, setMessage, run } = useAction();
 
-  const entries = data ?? [];
+  const entries = data?.entries ?? EMPTY_LIST;
+  const locations = data?.locations ?? EMPTY_LIST;
+  const selectedLocation =
+    locations.find((location) => location.id === selectedLocationId) ??
+    locations.find((location) => location.isPrimary) ??
+    locations[0];
+  const timezoneByLocation = useMemo(
+    () => new Map(locations.map((location) => [location.id, location.timezone])),
+    [locations]
+  );
+
+  useEffect(() => {
+    if (!selectedLocationId && selectedLocation) setSelectedLocationId(selectedLocation.id);
+  }, [selectedLocation, selectedLocationId]);
   const isSubmitting = isBusy('add');
   const isBulkBusy = isBusy('bulk');
 
-  const overlapsExisting = (date, start, end) =>
-    entries.some(
-      (a) =>
-        a.available_date === date &&
-        toTimeDisplay(a.start_time) < end &&
-        toTimeDisplay(a.end_time) > start
+  const overlapsExisting = (date, start, end) => {
+    if (!selectedLocation) return false;
+    const startsAt = businessLocalDateTimeToInstant(date, start, selectedLocation.timezone);
+    const endsAt = businessLocalDateTimeToInstant(date, end, selectedLocation.timezone);
+    return entries.some(
+      (entry) =>
+        entry.locationId === selectedLocation.id &&
+        entry.kind === 'Available' &&
+        entry.startsAt < endsAt &&
+        entry.endsAt > startsAt
     );
+  };
 
   const toggleWorkday = (index) => {
     setWorkdays((prev) => {
@@ -110,6 +143,10 @@ const EmployeeAvailabilityPage = () => {
       setMessage({ type: 'error', text: 'יש לבחור תאריך.' });
       return;
     }
+    if (!selectedLocation) {
+      setMessage({ type: 'error', text: 'לא הוגדר מיקום לעסק.' });
+      return;
+    }
     if (startTime >= endTime) {
       setMessage({ type: 'error', text: 'שעת הסיום חייבת להיות אחרי שעת ההתחלה.' });
       return;
@@ -121,14 +158,32 @@ const EmployeeAvailabilityPage = () => {
 
     const { ok, result: entry } = await run(
       'add',
-      () => addAvailability({ userId, date: selectedDate, startTime, endTime }),
+      async () => {
+        const [entry] = await createOperatorAvailability([
+          {
+            locationId: selectedLocation.id,
+            kind: 'Available',
+            startsAt: businessLocalDateTimeToInstant(
+              selectedDate,
+              startTime,
+              selectedLocation.timezone
+            ),
+            endsAt: businessLocalDateTimeToInstant(
+              selectedDate,
+              endTime,
+              selectedLocation.timezone
+            ),
+          },
+        ]);
+        return entry;
+      },
       {
         success: `זמינות נשמרה: ${formatHebrewDate(selectedDate)}, ${startTime}-${endTime}`,
         errorFallback: 'שגיאה בשמירת הזמינות. יש לנסות שוב.',
       }
     );
     if (ok) {
-      setData((prev) => sortEntries([...prev, entry]));
+      setData((prev) => ({ ...prev, entries: sortEntries([...prev.entries, entry]) }));
       setSelectedDate('');
     }
   };
@@ -145,21 +200,26 @@ const EmployeeAvailabilityPage = () => {
     const candidates = datesInRange(start, end).filter((d) => workdays[weekdayIndex(d)]);
 
     let skipped = 0;
-    const rows = [];
+    if (!selectedLocation) {
+      setMessage({ type: 'error', text: 'לא הוגדר מיקום לעסק.' });
+      return;
+    }
+
+    const intervals = [];
     for (const date of candidates) {
       if (overlapsExisting(date, startTime, endTime)) {
         skipped += 1;
       } else {
-        rows.push({
-          user_id: userId,
-          available_date: date,
-          start_time: startTime,
-          end_time: endTime,
+        intervals.push({
+          locationId: selectedLocation.id,
+          kind: 'Available',
+          startsAt: businessLocalDateTimeToInstant(date, startTime, selectedLocation.timezone),
+          endsAt: businessLocalDateTimeToInstant(date, endTime, selectedLocation.timezone),
         });
       }
     }
 
-    if (rows.length === 0) {
+    if (intervals.length === 0) {
       setMessage({
         type: 'info',
         text: 'כל הימים בטווח כבר פתוחים או שאינם בימי העבודה שנבחרו.',
@@ -167,19 +227,22 @@ const EmployeeAvailabilityPage = () => {
       return;
     }
 
-    if (rows.length > 20) {
-      const confirmed = window.confirm(`לפתוח זמינות ב-${rows.length} ימים?`);
+    if (intervals.length > 20) {
+      const confirmed = window.confirm(`לפתוח זמינות ב-${intervals.length} ימים?`);
       if (!confirmed) return;
     }
 
     const { ok, result: created } = await run(
       'bulk',
-      () => addAvailabilityBulk(rows),
+      () => createOperatorAvailability(intervals),
       { errorFallback: 'שגיאה בפתיחה מרוכזת. יש לנסות שוב.' }
     );
     if (ok) {
       const createdRows = created ?? [];
-      setData((prev) => sortEntries([...prev, ...createdRows]));
+      setData((prev) => ({
+        ...prev,
+        entries: sortEntries([...prev.entries, ...createdRows]),
+      }));
       const openedText =
         createdRows.length === 1 ? 'נפתח יום אחד' : `נפתחו ${createdRows.length} ימים`;
       const skippedText = skipped === 1 ? 'דולג יום אחד' : `דולגו ${skipped} ימים`;
@@ -191,10 +254,13 @@ const EmployeeAvailabilityPage = () => {
   };
 
   const handleDelete = async (id) => {
-    const { ok } = await run(id, () => deleteAvailability(id), {
+    const { ok } = await run(id, () => deleteOperatorAvailability(id), {
       errorFallback: 'שגיאה במחיקה. ייתכן שכבר שובצו לך טיפולים בחלון זה.',
     });
-    if (ok) setData((prev) => prev.filter((a) => a.id !== id));
+    if (ok) setData((prev) => ({
+      ...prev,
+      entries: prev.entries.filter((entry) => entry.id !== id),
+    }));
   };
 
   return (
@@ -206,6 +272,19 @@ const EmployeeAvailabilityPage = () => {
       />
 
       <form onSubmit={handleSubmit} className="availability-form">
+        <div className="input-group">
+          <label htmlFor="location-input">מיקום</label>
+          <select
+            id="location-input"
+            value={selectedLocation?.id ?? ''}
+            onChange={(event) => setSelectedLocationId(event.target.value)}
+            disabled={locations.length <= 1}
+          >
+            {locations.map((location) => (
+              <option key={location.id} value={location.id}>{location.name}</option>
+            ))}
+          </select>
+        </div>
         <div className="input-group">
           <label htmlFor="date-input"><Calendar size={18} /> תאריך</label>
           <input
@@ -306,8 +385,24 @@ const EmployeeAvailabilityPage = () => {
           entries.map((entry) => (
             <div key={entry.id} className="availability-entry">
               <span>
-                {formatHebrewDate(entry.available_date)} · {toTimeDisplay(entry.start_time)}-
-                {toTimeDisplay(entry.end_time)}
+                {formatHebrewDate(
+                  dateInTimezone(
+                    entry.startsAt,
+                    timezoneByLocation.get(entry.locationId) ??
+                      selectedLocation?.timezone ??
+                      'Asia/Jerusalem'
+                  )
+                )} ·{' '}
+                {toTimeDisplay(
+                  entry.startsAt,
+                  timezoneByLocation.get(entry.locationId) ??
+                    selectedLocation?.timezone
+                )}-
+                {toTimeDisplay(
+                  entry.endsAt,
+                  timezoneByLocation.get(entry.locationId) ??
+                    selectedLocation?.timezone
+                )}
               </span>
               <button
                 type="button"

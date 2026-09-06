@@ -11,3 +11,6 @@ export * from './team';
 export * from './nest/client';
 export * from './nest/publicScheduling';
 export * from './nest/auth';
+export * from './nest/operator';
+export * from './nest/configuration';
+export * from './nest/staffing';

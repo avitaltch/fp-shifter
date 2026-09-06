@@ -45,6 +45,7 @@ export class ConfigurationController {
   constructor(private readonly configuration: ConfigurationService) {}
 
   @Get('locations')
+  @Roles('Owner', 'Manager', 'Provider')
   @ApiOperation({ summary: 'List locations for the authenticated business' })
   @ApiOkResponse({ type: [LocationResponseDto] })
   listLocations(@CurrentPrincipal() principal: AuthPrincipal) {

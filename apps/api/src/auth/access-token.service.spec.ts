@@ -13,10 +13,12 @@ const principal: AuthPrincipal = {
   email: 'owner@example.com',
   firstName: 'Dana',
   lastName: 'Owner',
+  phoneE164: null,
   businessId: '00000000-0000-4000-8000-000000000001',
   businessSlug: 'happy-pets-demo',
   membershipId: '00000000-0000-4000-8000-000000000301',
   role: 'Owner',
+  mustChangePassword: false,
 };
 
 describe('AccessTokenService', () => {

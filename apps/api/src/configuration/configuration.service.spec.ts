@@ -24,10 +24,12 @@ const owner: AuthPrincipal = {
   email: 'owner@example.test',
   firstName: 'Owner',
   lastName: 'User',
+  phoneE164: null,
   businessId: BUSINESS_ID,
   businessSlug: 'happy-pets-demo',
   membershipId: '00000000-0000-4000-8000-000000000301',
   role: 'Owner',
+  mustChangePassword: false,
 };
 
 const provider: AuthPrincipal = {

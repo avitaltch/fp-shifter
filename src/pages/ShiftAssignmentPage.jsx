@@ -1,14 +1,19 @@
-import { useCallback, useMemo } from 'react';
-import { Users, CheckCircle, Clock } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Users, CheckCircle, Clock, RefreshCw } from 'lucide-react';
 import {
-  getAssignmentData,
-  createEligibilityIndex,
-  eligibleEmployeesFor,
-  assignShift,
+  listOperatorAppointments,
+  listOperatorReassignmentOptions,
+  reassignOperatorStep,
 } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
-import { todayString, toTimeDisplay, formatHebrewDate } from '../lib/dates';
+import {
+  addDaysString,
+  dateInTimezone,
+  formatHebrewDate,
+  todayString,
+  toTimeDisplay,
+} from '../lib/dates';
 import PageContainer from '../components/PageContainer/PageContainer';
 import PageHeader from '../components/PageHeader/PageHeader';
 import Alert from '../components/Alert/Alert';
@@ -16,101 +21,169 @@ import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import './ShiftAssignmentPage.css';
 
+const REASON_LABELS = {
+  NOT_QUALIFIED: 'ללא מיומנות מתאימה',
+  NO_COVERING_AVAILABILITY: 'אין חלון זמינות מלא',
+  MARKED_UNAVAILABLE: 'סומן/ה כלא זמין/ה',
+  SCHEDULE_CONFLICT: 'קיים שיבוץ חופף',
+};
+
+function flattenScheduledSteps(appointments) {
+  return appointments.flatMap((appointment) =>
+    appointment.steps
+      .filter((step) => step.status === 'Scheduled')
+      .map((step) => ({
+        ...step,
+        appointmentId: appointment.id,
+        customerFirstName: appointment.customerFirstName,
+        customerLastName: appointment.customerLastName,
+        timezone: appointment.timezone,
+      }))
+  );
+}
+
 const ShiftAssignmentPage = () => {
-  const fetchData = useCallback(() => getAssignmentData(todayString()), []);
+  const [optionsByStep, setOptionsByStep] = useState({});
+  const fetchData = useCallback(
+    async () => flattenScheduledSteps(
+      await listOperatorAppointments(todayString(), addDaysString(13))
+    ),
+    []
+  );
   const { data, setData, loading, error, refetch } = useAsyncData(fetchData, {
     errorMessage: 'שגיאה בטעינת הנתונים.',
   });
-  // A failed assignment usually means the list is stale — refetch on error.
   const { isBusy, message, run } = useAction({ onError: refetch });
 
-  const handleAssign = async (item, userId) => {
-    if (!userId) return;
-    const employee = data.staff.find((e) => e.id === userId);
+  const steps = data ?? [];
+
+  const loadOptions = async (stepId) => {
+    const { ok, result } = await run(
+      `options:${stepId}`,
+      () => listOperatorReassignmentOptions(stepId),
+      { errorFallback: 'שגיאה בבדיקת חלופות השיבוץ.' }
+    );
+    if (ok) setOptionsByStep((current) => ({ ...current, [stepId]: result }));
+  };
+
+  const handleReassign = async (step, providerUserId) => {
+    if (!providerUserId) return;
+    const provider = optionsByStep[step.id]?.find(
+      (option) => option.providerUserId === providerUserId
+    );
+    if (!provider) return;
+    const visitDate = dateInTimezone(step.startsAt, step.timezone);
     const confirmed = window.confirm(
-      `לשבץ את ${employee?.first_name} ${employee?.last_name} לטיפול ב-${formatHebrewDate(item.work_date)} בשעה ${toTimeDisplay(item.start_time)}?`
+      `לשבץ את ${provider.firstName} ${provider.lastName} לטיפול ב-${formatHebrewDate(visitDate)} בשעה ${toTimeDisplay(step.startsAt, step.timezone)}?`
     );
     if (!confirmed) return;
 
-    // assign_shift RPC: re-checks skill/availability/conflicts server-side
-    // and throws SHIFT_TAKEN if an employee volunteered concurrently.
-    const { ok } = await run(item.id, () => assignShift(item.id, userId), {
-      success: 'השיבוץ בוצע בהצלחה.',
-      errorFallback: 'שגיאה בשיבוץ העובד.',
-    });
+    const { ok, result } = await run(
+      `reassign:${step.id}`,
+      () => reassignOperatorStep(step.id, providerUserId),
+      {
+        success: 'השיבוץ עודכן בהצלחה.',
+        errorFallback: 'שגיאה בעדכון השיבוץ.',
+      }
+    );
     if (ok) {
-      setData((prev) => ({
-        ...prev,
-        unassigned: prev.unassigned.filter((i) => i.id !== item.id),
-        assignments: [...prev.assignments, { ...item, user_id: userId }],
-      }));
+      setData((current) =>
+        current.map((entry) => (entry.id === step.id ? { ...entry, ...result } : entry))
+      );
+      setOptionsByStep((current) => {
+        const next = { ...current };
+        delete next[step.id];
+        return next;
+      });
     }
   };
-
-  const unassigned = data?.unassigned || [];
-  const eligibilityIndex = useMemo(
-    () => (data ? createEligibilityIndex(data) : null),
-    [data]
-  );
 
   return (
     <PageContainer size="md" className="assignment-page">
       <PageHeader
         icon={Users}
-        title="שיבוץ משמרות"
-        subtitle="הקצאת עובדים לטיפולים שממתינים לשיבוץ. מוצגים רק עובדים מיומנים, זמינים ופנויים."
+        title="ניהול שיבוצים"
+        subtitle="בדיקת חלופות ושינוי ספק שירות בלי לפגוע בזמינות או ליצור חפיפות."
       />
 
       {loading && <LoadingSpinner text="טוען נתונים..." />}
       <Alert type="error">{error}</Alert>
       <Alert type={message?.type}>{message?.text}</Alert>
 
-      {!loading && !error && unassigned.length === 0 && (
-        <EmptyState
-          icon={CheckCircle}
-          text="מעולה! כל הטיפולים שובצו בהצלחה."
-        />
+      {!loading && !error && steps.length === 0 && (
+        <EmptyState icon={CheckCircle} text="אין טיפולים עתידיים שממתינים לביצוע." />
       )}
 
-      {!loading && !error && unassigned.length > 0 && (
+      {!loading && !error && steps.length > 0 && (
         <div className="unassigned-list">
-          {unassigned.map((item) => {
-            const eligible = eligibleEmployeesFor(item, { ...data, eligibilityIndex });
+          {steps.map((step) => {
+            const options = optionsByStep[step.id];
+            const alternatives = options?.filter(
+              (option) => option.eligible && option.providerUserId !== step.providerUserId
+            );
+            const ineligible = options?.filter((option) => !option.eligible) ?? [];
             return (
-              <div key={item.id} className="unassigned-card">
+              <div key={step.id} className="unassigned-card">
                 <div className="unassigned-info">
-                  <h3>{item.service_types?.name}</h3>
+                  <h3>{step.serviceName}</h3>
                   <p>
-                    <strong>לקוח/ה:</strong> {item.appointments?.customers?.first_name}{' '}
-                    {item.appointments?.customers?.last_name}
+                    <strong>לקוח/ה:</strong> {step.customerFirstName} {step.customerLastName}
+                  </p>
+                  <p>
+                    <strong>משובץ/ת כעת:</strong> {step.providerFirstName} {step.providerLastName}
                   </p>
                   <div className="time-badge">
                     <Clock size={14} />
                     <span>
-                      {formatHebrewDate(item.work_date)} | {toTimeDisplay(item.start_time)} -{' '}
-                      {toTimeDisplay(item.end_time)}
+                      {formatHebrewDate(dateInTimezone(step.startsAt, step.timezone))} |{' '}
+                      {toTimeDisplay(step.startsAt, step.timezone)} -{' '}
+                      {toTimeDisplay(step.endsAt, step.timezone)}
                     </span>
                   </div>
                 </div>
                 <div className="assign-action">
-                  {eligible.length === 0 ? (
-                    <p className="no-eligible">אין עובד מיומן וזמין לחלון זה</p>
+                  {!options ? (
+                    <button
+                      type="button"
+                      className="employee-select"
+                      onClick={() => loadOptions(step.id)}
+                      disabled={isBusy(`options:${step.id}`)}
+                    >
+                      <RefreshCw size={15} />
+                      {isBusy(`options:${step.id}`) ? 'בודק חלופות...' : 'בדיקת חלופות'}
+                    </button>
+                  ) : alternatives.length === 0 ? (
+                    <p className="no-eligible">אין ספק/ית חלופי/ת פנוי/ה לחלון זה</p>
                   ) : (
                     <select
-                      onChange={(e) => handleAssign(item, e.target.value)}
+                      onChange={(event) => handleReassign(step, event.target.value)}
                       value=""
-                      disabled={isBusy(item.id)}
+                      disabled={isBusy(`reassign:${step.id}`)}
                       className="employee-select"
+                      aria-label={`שינוי שיבוץ עבור ${step.serviceName}`}
                     >
                       <option value="" disabled>
-                        {isBusy(item.id) ? 'משבץ...' : 'בחר/י עובד/ת לשיבוץ'}
+                        {isBusy(`reassign:${step.id}`) ? 'מעדכן...' : 'בחר/י ספק/ית חלופי/ת'}
                       </option>
-                      {eligible.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.first_name} {emp.last_name}
+                      {alternatives.map((provider) => (
+                        <option key={provider.providerUserId} value={provider.providerUserId}>
+                          {provider.firstName} {provider.lastName}
                         </option>
                       ))}
                     </select>
+                  )}
+                  {ineligible.length > 0 && (
+                    <details className="assignment-diagnostics">
+                      <summary>למה אחרים לא זמינים?</summary>
+                      <ul>
+                        {ineligible.map((provider) => (
+                          <li key={provider.providerUserId}>
+                            {provider.firstName} {provider.lastName}: {' '}
+                            {provider.reasons.map((reason) => REASON_LABELS[reason]).join(', ')}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
                   )}
                 </div>
               </div>

@@ -154,6 +154,7 @@ export class BookingRepository {
        join users u on u.id = bm.user_id
        where ps.business_id = $1
          and ps.service_id = any($2::uuid[])
+         and bm.disabled_at is null
          and u.disabled_at is null
        order by ps.service_id, ps.provider_user_id`,
       [[...new Set(command.serviceIds)]],

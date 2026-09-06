@@ -33,6 +33,7 @@ const renderProtected = (allowedRoles) =>
       <Routes>
         <Route path="/login" element={<div>Login Page</div>} />
         <Route path="/" element={<div>Home Page</div>} />
+        <Route path="/employee/profile" element={<div>Password Profile</div>} />
         <Route
           path="/protected"
           element={
@@ -82,6 +83,19 @@ describe('ProtectedRoute', () => {
     renderProtected(['Admin']);
 
     expect(screen.getByText('Protected Content')).toBeInTheDocument();
+  });
+
+  it('redirects temporary-password users to their profile', () => {
+    useAuth.mockReturnValue(
+      authState({
+        session: { user: { id: 'user-1', mustChangePassword: true } },
+        role: 'Admin',
+      })
+    );
+    renderProtected(['Admin']);
+
+    expect(screen.getByText('Password Profile')).toBeInTheDocument();
+    expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
 
   it('accepts any of the allowed roles', () => {

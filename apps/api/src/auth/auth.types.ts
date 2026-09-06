@@ -6,10 +6,12 @@ export interface AuthPrincipal {
   email: string;
   firstName: string;
   lastName: string;
+  phoneE164: string | null;
   businessId: string;
   businessSlug: string;
   membershipId: string;
   role: MembershipRole;
+  mustChangePassword: boolean;
 }
 
 export interface AuthenticatedRequest {

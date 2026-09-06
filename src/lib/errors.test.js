@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { friendlyError } from './errors';
 
-// Every code raised by supabase/functions.sql or lib/api must map to Hebrew.
+// Stable API codes shown to customers should map to Hebrew.
 const CASES = [
   ['SLOT_TAKEN', 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.'],
   ['PLAN_NO_LONGER_AVAILABLE', 'השעה שנבחרה נתפסה זה עתה. יש לבחור שעה אחרת.'],

@@ -84,6 +84,21 @@ export class AuthService {
     return this.repository.revoke(refreshToken);
   }
 
+  async changePassword(
+    principal: AuthPrincipal,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const currentHash = await this.repository.readPasswordHash(principal.userId);
+    if (!currentHash || !(await this.passwords.verify(currentPassword, currentHash))) {
+      throw invalidCurrentPassword();
+    }
+    const newHash = await this.passwords.hash(newPassword);
+    if (!(await this.repository.replacePassword(principal, currentHash, newHash))) {
+      throw invalidCurrentPassword();
+    }
+  }
+
   me(principal: AuthPrincipal): Omit<AuthSessionResponseDto, 'accessToken' | 'expiresInSeconds'> {
     return this.principalResponse(principal);
   }
@@ -108,6 +123,8 @@ export class AuthService {
         email: principal.email,
         firstName: principal.firstName,
         lastName: principal.lastName,
+        phoneE164: principal.phoneE164,
+        mustChangePassword: principal.mustChangePassword,
       },
       business: {
         id: principal.businessId,
@@ -129,5 +146,12 @@ function invalidSession(): UnauthorizedException {
   return new UnauthorizedException({
     code: 'INVALID_REFRESH_SESSION',
     message: 'The session is no longer valid',
+  });
+}
+
+function invalidCurrentPassword(): UnauthorizedException {
+  return new UnauthorizedException({
+    code: 'CURRENT_PASSWORD_INVALID',
+    message: 'The current password is incorrect',
   });
 }

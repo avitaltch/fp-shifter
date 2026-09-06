@@ -37,6 +37,11 @@ const MESSAGES = {
   INVALID_CREDENTIALS: 'אימייל או סיסמה שגויים.',
   AUTH_RATE_LIMITED: 'בוצעו יותר מדי ניסיונות התחברות. יש להמתין ולנסות שוב.',
   INVALID_REFRESH_SESSION: 'החיבור פג. יש להתחבר מחדש.',
+  CURRENT_PASSWORD_INVALID: 'הסיסמה הנוכחית שגויה.',
+  STAFF_EMAIL_IN_USE: 'קיים כבר חשבון צוות עם כתובת האימייל הזו.',
+  STAFF_REASSIGNMENT_REQUIRED: 'יש להעביר תחילה את התורים העתידיים של העובד/ת.',
+  SELF_DEACTIVATION_NOT_ALLOWED: 'לא ניתן להשבית את החשבון שלך.',
+  ROLE_MANAGEMENT_FORBIDDEN: 'רק בעלים יכול לנהל הרשאות מנהלים.',
   'Invalid login credentials': 'אימייל או סיסמה שגויים.',
 };
 

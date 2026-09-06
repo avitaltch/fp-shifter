@@ -1,17 +1,17 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ServiceManagementPage from './ServiceManagementPage';
-import { listServices, createService, updateService, deleteService } from '../lib/api';
+import { listOperatorServices, createOperatorService, updateOperatorService, deactivateOperatorService } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
-  listServices: vi.fn(),
-  createService: vi.fn(),
-  updateService: vi.fn(),
-  deleteService: vi.fn(),
+  listOperatorServices: vi.fn(),
+  createOperatorService: vi.fn(),
+  updateOperatorService: vi.fn(),
+  deactivateOperatorService: vi.fn(),
 }));
 
 const mockServices = [
-  { id: 'svc-1', name: 'תספורת', description: 'תספורת קלאסית', base_price: 150, default_duration: 45 },
+  { id: 'svc-1', name: 'תספורת', description: 'תספורת קלאסית', priceMinor: 15000, durationMinutes: 45, currency: 'ILS', active: true },
 ];
 
 async function openAddForm() {
@@ -35,7 +35,7 @@ const clickSave = () => fireEvent.click(screen.getByRole('button', { name: /שמ
 describe('ServiceManagementPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    listServices.mockResolvedValue(mockServices);
+    listOperatorServices.mockResolvedValue(mockServices);
   });
 
   it('lists services from the api layer', async () => {
@@ -44,11 +44,11 @@ describe('ServiceManagementPage', () => {
     expect(await screen.findByText('תספורת')).toBeInTheDocument();
     expect(screen.getByText('₪150')).toBeInTheDocument();
     expect(screen.getByText("45 דק'")).toBeInTheDocument();
-    expect(listServices).toHaveBeenCalledTimes(1);
+    expect(listOperatorServices).toHaveBeenCalledTimes(1);
   });
 
   it('shows an empty state when there are no services', async () => {
-    listServices.mockResolvedValue([]);
+    listOperatorServices.mockResolvedValue([]);
     render(<ServiceManagementPage />);
 
     expect(
@@ -64,7 +64,7 @@ describe('ServiceManagementPage', () => {
     clickSave();
 
     expect(await screen.findByText('נא להזין שם שירות.')).toBeInTheDocument();
-    expect(createService).not.toHaveBeenCalled();
+    expect(createOperatorService).not.toHaveBeenCalled();
   });
 
   it('rejects a negative or non-numeric price', async () => {
@@ -79,7 +79,7 @@ describe('ServiceManagementPage', () => {
     clickSave();
     expect(await screen.findByText('המחיר חייב להיות מספר חיובי.')).toBeInTheDocument();
 
-    expect(createService).not.toHaveBeenCalled();
+    expect(createOperatorService).not.toHaveBeenCalled();
   });
 
   it('rejects a non-positive duration', async () => {
@@ -92,11 +92,11 @@ describe('ServiceManagementPage', () => {
     expect(
       await screen.findByText('משך הטיפול חייב להיות מספר דקות חיובי.')
     ).toBeInTheDocument();
-    expect(createService).not.toHaveBeenCalled();
+    expect(createOperatorService).not.toHaveBeenCalled();
   });
 
   it('creates a service with parsed numeric fields and refreshes the list', async () => {
-    createService.mockResolvedValue({ id: 'svc-2' });
+    createOperatorService.mockResolvedValue({ id: 'svc-2' });
     render(<ServiceManagementPage />);
     await openAddForm();
 
@@ -104,21 +104,20 @@ describe('ServiceManagementPage', () => {
     clickSave();
 
     await waitFor(() => {
-      expect(createService).toHaveBeenCalledWith({
+      expect(createOperatorService).toHaveBeenCalledWith({
         name: 'פן',
         description: '',
-        base_price: 80.5,
-        default_duration: 30,
+        priceMinor: 8050,
+        durationMinutes: 30,
+        currency: 'ILS',
       });
     });
     // List is refetched after a successful save
-    expect(listServices).toHaveBeenCalledTimes(2);
+    expect(listOperatorServices).toHaveBeenCalledTimes(2);
   });
 
   it('maps the duplicate-name constraint to a Hebrew message', async () => {
-    createService.mockRejectedValue(
-      new Error('duplicate key value violates unique constraint "service_types_name_unique"')
-    );
+    createOperatorService.mockRejectedValue({ code: 'SERVICE_NAME_EXISTS' });
     render(<ServiceManagementPage />);
     await openAddForm();
 
@@ -128,8 +127,8 @@ describe('ServiceManagementPage', () => {
     expect(await screen.findByText('כבר קיים שירות בשם זה.')).toBeInTheDocument();
   });
 
-  it('edits an existing service through updateService', async () => {
-    updateService.mockResolvedValue({ id: 'svc-1' });
+  it('edits an existing service through updateOperatorService', async () => {
+    updateOperatorService.mockResolvedValue({ id: 'svc-1' });
     render(<ServiceManagementPage />);
     await screen.findByText('תספורת');
 
@@ -142,18 +141,19 @@ describe('ServiceManagementPage', () => {
     clickSave();
 
     await waitFor(() => {
-      expect(updateService).toHaveBeenCalledWith('svc-1', {
+      expect(updateOperatorService).toHaveBeenCalledWith('svc-1', {
         name: 'תספורת',
         description: 'תספורת קלאסית',
-        base_price: 175,
-        default_duration: 45,
+        priceMinor: 17500,
+        durationMinutes: 45,
+        currency: 'ILS',
       });
     });
   });
 
   it('soft-deletes a service after confirmation', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
-    deleteService.mockResolvedValue([mockServices[0]]);
+    deactivateOperatorService.mockResolvedValue(mockServices[0]);
     render(<ServiceManagementPage />);
     await screen.findByText('תספורת');
 
@@ -161,7 +161,7 @@ describe('ServiceManagementPage', () => {
 
     expect(window.confirm).toHaveBeenCalled();
     await waitFor(() => {
-      expect(deleteService).toHaveBeenCalledWith('svc-1');
+      expect(deactivateOperatorService).toHaveBeenCalledWith('svc-1');
     });
   });
 
@@ -172,11 +172,11 @@ describe('ServiceManagementPage', () => {
 
     fireEvent.click(screen.getByTitle('מחק'));
 
-    expect(deleteService).not.toHaveBeenCalled();
+    expect(deactivateOperatorService).not.toHaveBeenCalled();
   });
 
   it('shows an error message when loading fails', async () => {
-    listServices.mockRejectedValue(new Error('network'));
+    listOperatorServices.mockRejectedValue(new Error('network'));
     render(<ServiceManagementPage />);
 
     expect(await screen.findByText('שגיאה בטעינת השירותים.')).toBeInTheDocument();

@@ -45,6 +45,15 @@
   min-height: 40px;
 }
 
+.team-page .invite-form select {
+  min-height: 40px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+}
+
 .team-page .invite-form .btn-primary {
   min-height: 40px;
   white-space: nowrap;
@@ -75,6 +84,29 @@
 .team-page .member-name h3 {
   margin: 0;
   font-weight: 600;
+}
+
+.team-page .member-email {
+  margin: 0.2rem 0 0;
+  color: #6b7280;
+  font-size: 0.82rem;
+}
+
+.team-page .status-chip {
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.team-page .status-chip.pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.team-page .team-card.is-disabled {
+  opacity: 0.72;
 }
 
 .team-page .icon-btn {
@@ -112,6 +144,11 @@
 .team-page .icon-btn.deactivate:hover:not(:disabled) {
   background: #fee2e2;
   color: #dc2626;
+}
+
+.team-page .icon-btn.reactivate:hover:not(:disabled) {
+  background: #dcfce7;
+  color: #047857;
 }
 
 .team-page .name-edit {

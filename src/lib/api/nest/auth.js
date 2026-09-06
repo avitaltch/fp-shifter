@@ -66,6 +66,14 @@ export async function requestAuthenticatedNestApi(path, options = {}) {
   }
 }
 
+export function changeStaffPassword(currentPassword, newPassword, options = {}) {
+  return requestAuthenticatedNestApi('auth/password', {
+    ...options,
+    method: 'POST',
+    body: { currentPassword, newPassword },
+  });
+}
+
 export function clearStaffAccessToken() {
   accessToken = null;
 }
