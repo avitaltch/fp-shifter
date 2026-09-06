@@ -5,24 +5,7 @@
  * immutable image move between environments. Vite variables remain as the
  * local-development and backwards-compatible build-time fallback.
  */
-export function resolveSupabaseConfig(
-  runtimeConfig = globalThis.__APP_CONFIG__,
-  buildConfig = import.meta.env
-) {
-  const supabaseUrl = runtimeConfig?.SUPABASE_URL || buildConfig?.VITE_SUPABASE_URL;
-  const supabaseAnonKey =
-    runtimeConfig?.SUPABASE_ANON_KEY || buildConfig?.VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      'Missing Supabase configuration: set APP_SUPABASE_URL and APP_SUPABASE_ANON_KEY at runtime, or VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY at build time'
-    );
-  }
-
-  return { supabaseUrl, supabaseAnonKey };
-}
-
-/** Resolve the self-hosted NestJS base URL only when a migrated API is used. */
+/** Resolve the self-hosted NestJS base URL. */
 export function resolveApiConfig(
   runtimeConfig = globalThis.__APP_CONFIG__,
   buildConfig = import.meta.env

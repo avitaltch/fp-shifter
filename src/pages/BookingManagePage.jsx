@@ -3,8 +3,6 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import { CalendarClock } from 'lucide-react';
 import {
   cancelPublicManagedBooking,
-  customerCancelAppointment,
-  customerGetAppointment,
   loadPublicManagedAppointment,
 } from '../lib/api';
 import { useAction } from '../hooks/useAction';
@@ -12,7 +10,6 @@ import { formatHebrewDate, toTimeDisplay } from '../lib/dates';
 import { readFragmentCapability } from '../lib/capabilityTokens';
 import PageContainer from '../components/PageContainer/PageContainer';
 import Alert from '../components/Alert/Alert';
-import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
 import './BookingManagePage.css';
 
 const STATUS_LABEL = {
@@ -22,84 +19,36 @@ const STATUS_LABEL = {
   Completed: 'הושלם',
 };
 
-function readStoredConfirmation() {
-  try {
-    const raw = sessionStorage.getItem(BOOKING_CONFIRMATION_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 const BookingManagePage = () => {
   const { businessSlug } = useParams();
   const { hash, pathname, search } = useLocation();
-  const isPublicBooking = Boolean(businessSlug);
-  const managementToken = isPublicBooking
-    ? readFragmentCapability(hash, 'sm')
-    : null;
-  const [phone, setPhone] = useState('');
-  const [confirmationNumber, setConfirmationNumber] = useState('');
+  const managementToken = readFragmentCapability(hash, 'sm');
   const [appointment, setAppointment] = useState(null);
   const [cancelled, setCancelled] = useState(false);
   const { isBusy, message, setMessage, run } = useAction();
 
   useEffect(() => {
-    if (!isPublicBooking || !hash) return;
+    if (!hash) return;
     window.history.replaceState(window.history.state, '', `${pathname}${search}`);
-  }, [hash, isPublicBooking, pathname, search]);
+  }, [hash, pathname, search]);
 
   useEffect(() => {
-    if (isPublicBooking) {
-      if (!managementToken) {
-        setMessage({
-          type: 'error',
-          text: 'קישור ניהול התור חסר או אינו תקין.',
-        });
-        return;
-      }
-      let active = true;
-      run(
-        'lookup',
-        () => loadPublicManagedAppointment(businessSlug, managementToken),
-        { errorFallback: 'שגיאה באיתור התור.' }
-      ).then(({ ok, result }) => {
-        if (active && ok) setAppointment(result);
-      });
-      return () => {
-        active = false;
-      };
-    }
-
-    const stored = readStoredConfirmation();
-    if (!stored) return;
-    if (stored.booking?.appointment_id) {
-      setConfirmationNumber(String(stored.booking.appointment_id));
-    }
-    if (stored.phone) {
-      setPhone(String(stored.phone));
-    }
-  }, [businessSlug, isPublicBooking, managementToken, run, setMessage]);
-
-  const handleLookup = async (e) => {
-    e.preventDefault();
-    setAppointment(null);
-    setCancelled(false);
-
-    const id = confirmationNumber.trim();
-    const phoneValue = phone.trim();
-    if (!id || !phoneValue) {
-      setMessage({ type: 'error', text: 'נא להזין מספר אישור ומספר טלפון.' });
+    if (!managementToken) {
+      setMessage({ type: 'error', text: 'קישור ניהול התור חסר או אינו תקין.' });
       return;
     }
-
-    const { ok, result } = await run(
+    let active = true;
+    run(
       'lookup',
-      () => customerGetAppointment(id, phoneValue),
+      () => loadPublicManagedAppointment(businessSlug, managementToken),
       { errorFallback: 'שגיאה באיתור התור.' }
-    );
-    if (ok) setAppointment(result);
-  };
+    ).then(({ ok, result }) => {
+      if (active && ok) setAppointment(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [businessSlug, managementToken, run, setMessage]);
 
   const handleCancel = async () => {
     if (!appointment) return;
@@ -107,10 +56,7 @@ const BookingManagePage = () => {
 
     const { ok } = await run(
       'cancel',
-      () =>
-        isPublicBooking
-          ? cancelPublicManagedBooking(businessSlug, managementToken)
-          : customerCancelAppointment(appointment.appointment_id, phone.trim()),
+      () => cancelPublicManagedBooking(businessSlug, managementToken),
       {
         success: 'התור בוטל בהצלחה.',
         errorFallback: 'שגיאה בביטול התור.',
@@ -133,49 +79,13 @@ const BookingManagePage = () => {
         <CalendarClock size={40} className="manage-icon" aria-hidden="true" />
         <h1>ניהול תור</h1>
         <p className="subtitle">
-          {isPublicBooking
-            ? 'צפייה בפרטי התור וביטול מאובטח דרך הקישור האישי'
-            : 'איתור תור קיים לפי מספר אישור ומספר טלפון'}
+          צפייה בפרטי התור וביטול מאובטח דרך הקישור האישי
         </p>
       </div>
 
       <Alert type={message?.type}>{message?.text}</Alert>
 
-      {!appointment && !isPublicBooking && (
-        <form onSubmit={handleLookup} className="manage-form">
-          <div className="input-group">
-            <label htmlFor="manage-confirmation">מספר אישור</label>
-            <input
-              id="manage-confirmation"
-              type="text"
-              value={confirmationNumber}
-              onChange={(e) => setConfirmationNumber(e.target.value)}
-              autoComplete="off"
-              required
-            />
-          </div>
-          <div className="input-group">
-            <label htmlFor="manage-phone">טלפון</label>
-            <input
-              id="manage-phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              autoComplete="tel"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="submit-btn"
-            disabled={isBusy('lookup')}
-          >
-            {isBusy('lookup') ? 'מחפש...' : 'איתור תור'}
-          </button>
-        </form>
-      )}
-
-      {!appointment && isPublicBooking && isBusy('lookup') && (
+      {!appointment && isBusy('lookup') && (
         <p className="manage-loading" role="status">טוען את פרטי התור...</p>
       )}
 
@@ -206,7 +116,7 @@ const BookingManagePage = () => {
             <div className="rebook-block">
               <p className="rebook-copy">התור בוטל. לקביעת תור חדש:</p>
               <Link
-                to={businessSlug ? `/book/${businessSlug}` : '/book'}
+                to={`/book/${businessSlug}`}
                 className="btn-primary rebook-link"
               >
                 קביעת תור חדש
@@ -223,19 +133,6 @@ const BookingManagePage = () => {
             </button>
           )}
 
-          {!isPublicBooking && (
-            <button
-              type="button"
-              className="btn-secondary lookup-again"
-              onClick={() => {
-                setAppointment(null);
-                setCancelled(false);
-                setMessage(null);
-              }}
-            >
-              חיפוש תור אחר
-            </button>
-          )}
         </div>
       )}
     </PageContainer>

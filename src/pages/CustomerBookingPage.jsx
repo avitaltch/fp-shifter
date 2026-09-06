@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, Link, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
-  listServices,
-  getAvailableSlots,
-  bookAppointment,
   loadPublicBookingCatalog,
   loadPublicBookingSlots,
   submitPublicBooking,
@@ -63,21 +60,13 @@ const CustomerBookingPage = () => {
         setSelectedServices([]);
         setSelectedDate('');
         setSelectedTime('');
-        if (businessSlug) {
-          const catalog = await loadPublicBookingCatalog(businessSlug, {
-            signal: controller.signal,
-          });
-          if (cancelled) return;
-          setBusiness(catalog.business);
-          setLocation(catalog.location);
-          setServiceTypes(catalog.services);
-        } else {
-          const services = await listServices();
-          if (cancelled) return;
-          setBusiness(null);
-          setLocation(null);
-          setServiceTypes(services);
-        }
+        const catalog = await loadPublicBookingCatalog(businessSlug, {
+          signal: controller.signal,
+        });
+        if (cancelled) return;
+        setBusiness(catalog.business);
+        setLocation(catalog.location);
+        setServiceTypes(catalog.services);
       } catch (err) {
         if (cancelled || err?.name === 'AbortError') return;
         setError(
@@ -110,14 +99,12 @@ const CustomerBookingPage = () => {
       try {
         setSlotsLoading(true);
         setSlotsError(null);
-        const data = businessSlug
-          ? await loadPublicBookingSlots(
-              businessSlug,
-              selectedDate,
-              selectedServices,
-              { signal: controller.signal }
-            )
-          : await getAvailableSlots(selectedDate, selectedServices);
+        const data = await loadPublicBookingSlots(
+          businessSlug,
+          selectedDate,
+          selectedServices,
+          { signal: controller.signal }
+        );
         if (!cancelled) {
           setSlots(data || []);
           setSelectedTime('');
@@ -161,35 +148,23 @@ const CustomerBookingPage = () => {
 
     setIsSubmitting(true);
     try {
-      let booking;
-      if (businessSlug) {
-        const publicBookingRequest = {
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          phoneE164,
-          visitDate: selectedDate,
-          startsAt: selectedTime,
-          serviceIds: selectedServices,
-        };
-        bookingAttemptRef.current = idempotencyAttempt(
-          bookingAttemptRef.current,
-          publicBookingRequest
-        );
-        booking = await submitPublicBooking(
-          businessSlug,
-          publicBookingRequest,
-          { idempotencyKey: bookingAttemptRef.current.idempotencyKey }
-        );
-      } else {
-        booking = await bookAppointment({
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          phone: phone.trim(),
-          visitDate: selectedDate,
-          startTime: selectedTime,
-          serviceIds: selectedServices,
-        });
-      }
+      const publicBookingRequest = {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phoneE164,
+        visitDate: selectedDate,
+        startsAt: selectedTime,
+        serviceIds: selectedServices,
+      };
+      bookingAttemptRef.current = idempotencyAttempt(
+        bookingAttemptRef.current,
+        publicBookingRequest
+      );
+      const booking = await submitPublicBooking(
+        businessSlug,
+        publicBookingRequest,
+        { idempotencyKey: bookingAttemptRef.current.idempotencyKey }
+      );
 
       const confirmation = {
         booking,
@@ -198,18 +173,14 @@ const CustomerBookingPage = () => {
           .map((s) => s.name),
         customerName: `${firstName.trim()} ${lastName.trim()}`,
         phone: phone.trim(),
-        ...(businessSlug
-          ? {
-              bookingPath: `/book/${businessSlug}`,
-              timezone: location?.timezone,
-            }
-          : {}),
+        bookingPath: `/book/${businessSlug}`,
+        timezone: location?.timezone,
       };
 
       // Keep a copy so the success page survives a refresh / direct visit.
       try {
         const storedConfirmation = { ...confirmation };
-        if (businessSlug && confirmation.booking) {
+        if (confirmation.booking) {
           const safeBooking = { ...confirmation.booking };
           delete safeBooking.managementToken;
           storedConfirmation.booking = safeBooking;
@@ -222,10 +193,7 @@ const CustomerBookingPage = () => {
         /* storage unavailable — router state still works */
       }
 
-      navigate(
-        businessSlug ? `/book/${businessSlug}/success` : '/book/success',
-        { state: confirmation }
-      );
+      navigate(`/book/${businessSlug}/success`, { state: confirmation });
     } catch (err) {
       console.error(err);
       setSubmitError(friendlyError(err, 'שגיאת תקשורת, יש לנסות שוב.'));
@@ -239,13 +207,11 @@ const CustomerBookingPage = () => {
       ) {
         setSelectedTime('');
         try {
-          const refreshed = businessSlug
-            ? await loadPublicBookingSlots(
-                businessSlug,
-                selectedDate,
-                selectedServices
-              )
-            : await getAvailableSlots(selectedDate, selectedServices);
+          const refreshed = await loadPublicBookingSlots(
+            businessSlug,
+            selectedDate,
+            selectedServices
+          );
           setSlots(refreshed || []);
         } catch {
           setSlots([]);
@@ -320,12 +286,6 @@ const CustomerBookingPage = () => {
         <h1>{business ? `הזמנת תור אצל ${business.name}` : 'הזמנת תור חדש'}</h1>
         {location?.name && <p className="booking-location">{location.name}</p>}
         <p className="subtitle">בוחרים את השירותים לפי הסדר — אנחנו נמצא את הצוות והזמן שמתאימים לכולם.</p>
-        {!businessSlug && (
-          <p className="manage-entry">
-            יש לכם תור?{' '}
-            <Link to="/book/manage">לניהול תור קיים</Link>
-          </p>
-        )}
         <ol className="booking-progress" aria-label={`שלב ${progressStep} מתוך 3`}>
           {['שירותים', 'מועד', 'פרטים'].map((label, index) => {
             const step = index + 1;
@@ -423,8 +383,7 @@ const CustomerBookingPage = () => {
                   ) : slotsError ? (
                     <p className="error-state" role="alert">{slotsError}</p>
                   ) : slots.length === 0 ? (
-                    businessSlug ? (
-                      <div className="waitlist-callout">
+                    <div className="waitlist-callout">
                         <Bell size={22} aria-hidden="true" />
                         <div>
                           <strong>אין כרגע זמן שמתאים לכל השירותים</strong>
@@ -446,9 +405,6 @@ const CustomerBookingPage = () => {
                           </button>
                         </div>
                       </div>
-                    ) : (
-                      <p className="no-slots">אין שעות פנויות בתאריך זה. יש לבחור תאריך אחר.</p>
-                    )
                   ) : (
                     <div className="slots-grid">
                       {slots.map((slot) => (

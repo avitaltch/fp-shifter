@@ -1,5 +1,5 @@
 import { lazy, Suspense, useLayoutEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Navigate, Routes, Route, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar/Navbar';
 import Footer from './components/Footer/Footer';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute';
@@ -10,6 +10,7 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const ManagerDashboardPage = lazy(() => import('./pages/ManagerDashboardPage'));
 const ShiftAssignmentPage = lazy(() => import('./pages/ShiftAssignmentPage'));
 const CustomerBookingPage = lazy(() => import('./pages/CustomerBookingPage'));
+const BookingEntryPage = lazy(() => import('./pages/BookingEntryPage'));
 const BookingSuccessPage = lazy(() => import('./pages/BookingSuccessPage'));
 const BookingManagePage = lazy(() => import('./pages/BookingManagePage'));
 const WaitlistClaimPage = lazy(() => import('./pages/WaitlistClaimPage'));
@@ -18,7 +19,6 @@ const MyShiftsPage = lazy(() => import('./pages/MyShiftsPage'));
 const AboutPage = lazy(() => import('./pages/AboutPage'));
 const ServiceManagementPage = lazy(() => import('./pages/ServiceManagementPage'));
 const TeamPage = lazy(() => import('./pages/TeamPage'));
-const RecommendationsPage = lazy(() => import('./pages/RecommendationsPage'));
 const EmployeeProfilePage = lazy(() => import('./pages/EmployeeProfilePage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
@@ -40,9 +40,9 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/book" element={<CustomerBookingPage />} />
-          <Route path="/book/success" element={<BookingSuccessPage />} />
-          <Route path="/book/manage" element={<BookingManagePage />} />
+          <Route path="/book" element={<BookingEntryPage />} />
+          <Route path="/book/success" element={<Navigate to="/book" replace />} />
+          <Route path="/book/manage" element={<Navigate to="/book" replace />} />
           <Route path="/book/:businessSlug/success" element={<BookingSuccessPage />} />
           <Route path="/book/:businessSlug/manage" element={<BookingManagePage />} />
           <Route path="/book/:businessSlug" element={<CustomerBookingPage />} />
@@ -81,7 +81,7 @@ function App() {
           } />
           <Route path="/employee/recommendations" element={
             <ProtectedRoute allowedRoles={['Employee', 'Admin']}>
-              <RecommendationsPage />
+              <Navigate to="/employee/shifts" replace />
             </ProtectedRoute>
           } />
           <Route path="/employee/profile" element={

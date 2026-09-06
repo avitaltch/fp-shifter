@@ -17,7 +17,6 @@ const ADMIN_LINKS = [
 const STAFF_LINKS = [
   { to: '/employee/shifts', icon: Clock, label: 'המשמרות שלי' },
   { to: '/employee/availability', icon: CheckCircle, label: 'הזנת זמינות' },
-  { to: '/employee/recommendations', icon: Star, label: 'משמרות פתוחות' },
 ];
 
 const Navbar = () => {
