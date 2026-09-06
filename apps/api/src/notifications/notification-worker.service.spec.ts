@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeNotificationProvider } from './fake-notification.provider';
+import { NOTIFICATION_PROVIDER } from './notification-provider.token';
 import { NotificationRendererService } from './notification-renderer.service';
 import type { ClaimedNotificationJob } from './notification.types';
 import { NotificationWorkerRepository } from './notification-worker.repository';
@@ -72,7 +72,7 @@ describe('NotificationWorkerService', () => {
         NotificationWorkerService,
         { provide: NotificationWorkerRepository, useValue: repository },
         { provide: NotificationRendererService, useValue: renderer },
-        { provide: FakeNotificationProvider, useValue: provider },
+        { provide: NOTIFICATION_PROVIDER, useValue: provider },
         {
           provide: ConfigService,
           useValue: {

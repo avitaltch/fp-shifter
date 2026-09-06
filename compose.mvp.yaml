@@ -18,6 +18,21 @@ services:
       timeout: 3s
       retries: 20
 
+  db_roles:
+    image: postgres:17-alpine
+    command: ["sh", "/scripts/configure-runtime-role.sh"]
+    environment:
+      POSTGRES_DB: shiftsync
+      POSTGRES_USER: shiftsync
+      POSTGRES_PASSWORD: ${MVP_POSTGRES_PASSWORD:-shiftsync_local}
+      SHIFTSYNC_RUNTIME_PASSWORD: ${MVP_RUNTIME_POSTGRES_PASSWORD:-shiftsync_runtime_local}
+    volumes:
+      - ./docker/postgres/configure-runtime-role.sh:/scripts/configure-runtime-role.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   migrate:
     build:
       context: ./apps/api
@@ -25,8 +40,8 @@ services:
     environment:
       DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
     depends_on:
-      postgres:
-        condition: service_healthy
+      db_roles:
+        condition: service_completed_successfully
     restart: "no"
 
   api:
@@ -37,7 +52,7 @@ services:
       NODE_ENV: development
       API_HOST: 0.0.0.0
       API_PORT: 3000
-      DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
+      DATABASE_URL: postgres://shiftsync_runtime:${MVP_RUNTIME_POSTGRES_PASSWORD:-shiftsync_runtime_local}@postgres:5432/shiftsync
       CORS_ORIGINS: ${MVP_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       SWAGGER_ENABLED: ${MVP_SWAGGER_ENABLED:-true}
       MANAGEMENT_TOKEN_SECRET: ${MVP_MANAGEMENT_TOKEN_SECRET:?set MVP_MANAGEMENT_TOKEN_SECRET}
@@ -81,7 +96,7 @@ services:
       NODE_ENV: development
       API_HOST: 0.0.0.0
       API_PORT: 3000
-      DATABASE_URL: postgres://shiftsync:${MVP_POSTGRES_PASSWORD:-shiftsync_local}@postgres:5432/shiftsync
+      DATABASE_URL: postgres://shiftsync_runtime:${MVP_RUNTIME_POSTGRES_PASSWORD:-shiftsync_runtime_local}@postgres:5432/shiftsync
       CORS_ORIGINS: ${MVP_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
       SWAGGER_ENABLED: "false"
       MANAGEMENT_TOKEN_SECRET: ${MVP_MANAGEMENT_TOKEN_SECRET:?set MVP_MANAGEMENT_TOKEN_SECRET}

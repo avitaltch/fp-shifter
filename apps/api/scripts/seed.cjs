@@ -269,7 +269,8 @@ async function seed() {
              first_name = excluded.first_name,
              last_name = excluded.last_name,
              phone_e164 = excluded.phone_e164,
-             disabled_at = null`,
+             disabled_at = null,
+             must_change_password = false`,
         [user.id, user.email, user.firstName, user.lastName, user.phone],
       );
     }
@@ -282,7 +283,8 @@ async function seed() {
          on conflict (id) do update
          set business_id = excluded.business_id,
              user_id = excluded.user_id,
-             role = excluded.role`,
+             role = excluded.role,
+             disabled_at = null`,
         [
           membership.id,
           membership.businessId,

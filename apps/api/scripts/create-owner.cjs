@@ -49,14 +49,17 @@ async function main() {
          password_hash = excluded.password_hash,
          first_name = excluded.first_name,
          last_name = excluded.last_name,
-         disabled_at = null
+         disabled_at = null,
+         must_change_password = false
        returning id`,
       [email, passwordHash, firstName, lastName],
     );
     await client.query(
       `insert into business_memberships (business_id, user_id, role)
        values ($1, $2, 'Owner')
-       on conflict (business_id, user_id) do update set role = 'Owner'`,
+       on conflict (business_id, user_id) do update set
+         role = 'Owner',
+         disabled_at = null`,
       [business.rows[0].id, user.rows[0].id],
     );
     await client.query('commit');

@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import type { ApplicationEnvironment } from '../config/environment';
-import { FakeNotificationProvider } from './fake-notification.provider';
+import { NOTIFICATION_PROVIDER } from './notification-provider.token';
 import { NotificationRendererService } from './notification-renderer.service';
 import { NotificationWorkerRepository } from './notification-worker.repository';
+import type { NotificationProvider } from './notification.types';
 
 export interface NotificationWorkerRunResult {
   claimed: number;
@@ -22,7 +23,8 @@ export class NotificationWorkerService {
   constructor(
     private readonly repository: NotificationWorkerRepository,
     private readonly renderer: NotificationRendererService,
-    private readonly provider: FakeNotificationProvider,
+    @Inject(NOTIFICATION_PROVIDER)
+    private readonly provider: NotificationProvider,
     private readonly config: ConfigService<ApplicationEnvironment, true>,
   ) {}
 
