@@ -1,94 +1,38 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-// Shared auth seeding for ProtectedRoute e2e specs. The role comes from the
-// stubbed public.users profile fetch (matching AuthContext), not user_metadata.
-
-export function resolveSupabaseUrl() {
-  if (process.env.VITE_SUPABASE_URL) return process.env.VITE_SUPABASE_URL;
-  // helpers/ lives one level under e2e/, so climb two dirs to the project root
-  const envPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '.env');
-  if (!fs.existsSync(envPath)) {
-    throw new Error('VITE_SUPABASE_URL not found in the environment or .env');
-  }
-  const content = fs.readFileSync(envPath, 'utf8');
-  const match = content.match(/^\s*VITE_SUPABASE_URL\s*=\s*["']?([^"'\r\n]+)/m);
-  if (!match) {
-    throw new Error('VITE_SUPABASE_URL not found in the environment or .env');
-  }
-  return match[1].trim();
+export async function installApiConfig(page, apiUrl = 'http://localhost:5173/api/v1') {
+  await page.addInitScript((url) => {
+    window.__APP_CONFIG__ = Object.freeze({ API_URL: url });
+  }, apiUrl);
 }
 
-const projectRef = new URL(resolveSupabaseUrl()).hostname.split('.')[0];
-export const storageKey = `sb-${projectRef}-auth-token`;
-
-export function buildSession(userId, email) {
-  const user = {
-    id: userId,
-    aud: 'authenticated',
-    role: 'authenticated',
-    email,
-    user_metadata: {},
-    app_metadata: { provider: 'email' },
-    created_at: '2026-01-01T00:00:00Z',
-  };
-  return {
-    access_token: 'fake-access-token',
-    refresh_token: 'fake-refresh-token',
-    token_type: 'bearer',
-    expires_in: 3600,
-    expires_at: Math.floor(Date.now() / 1000) + 3600,
-    user,
-  };
-}
-
-// Seeds localStorage + stubs auth endpoints and the AuthContext profile fetch
-// (`users?id=eq.<id>`). Other `/users` list/count calls must be stubbed by the
-// test (registered after this helper so they take precedence).
-export async function authenticateAs(page, { userId, email, profile }) {
-  const session = buildSession(userId, email);
-
-  await page.addInitScript(
-    ([key, seeded]) => {
-      window.localStorage.setItem(key, JSON.stringify(seeded));
+export async function authenticateAs(
+  page,
+  { userId = 'user-1', email = 'staff@example.test', role = 'Provider' } = {}
+) {
+  await installApiConfig(page);
+  const session = {
+    accessToken: 'stubbed-access-token',
+    expiresInSeconds: 900,
+    user: {
+      id: userId,
+      email,
+      firstName: 'דנה',
+      lastName: 'לוי',
+      phoneE164: '+972501234567',
+      mustChangePassword: false,
     },
-    [storageKey, session]
+    business: {
+      id: '00000000-0000-4000-8000-000000000001',
+      slug: 'happy-pets-demo',
+      role,
+    },
+  };
+  await page.route('**/api/v1/auth/refresh', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(session) })
   );
+  await page.route('**/api/v1/auth/logout', (route) => route.fulfill({ status: 204 }));
+  return session;
+}
 
-  await page.route('**/auth/v1/user*', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(session.user),
-    });
-  });
-  await page.route('**/auth/v1/token*', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(session),
-    });
-  });
-  await page.route('**/auth/v1/logout*', async (route) => {
-    await route.fulfill({ status: 204, body: '' });
-  });
-
-  await page.route('**/rest/v1/users*', async (route) => {
-    const url = route.request().url();
-    if (url.includes(`id=eq.${userId}`)) {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(profile),
-      });
-      return;
-    }
-    // Fallback so unmatched list/count calls don't hang if a test forgot a stub
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([profile]),
-    });
-  });
+export function fulfillJson(route, body, status = 200) {
+  return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 }

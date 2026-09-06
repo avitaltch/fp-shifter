@@ -23,8 +23,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      VITE_SUPABASE_URL: https://example.supabase.co
-      VITE_SUPABASE_ANON_KEY: test-anon-key
+      VITE_API_URL: http://127.0.0.1:3000/api/v1
       DATABASE_URL: postgres://shiftsync:shiftsync_ci@127.0.0.1:5432/shiftsync_test
       MANAGEMENT_TOKEN_SECRET: ci-only-management-token-secret-at-least-32-bytes
       MANAGEMENT_TOKEN_TTL_DAYS: 365
@@ -50,6 +49,13 @@ jobs:
       - run: npm run api:build
       - run: npm --prefix apps/api run db:migrate
       - run: npm --prefix apps/api run db:seed
+      - run: npm --prefix apps/api run auth:create-owner
+        env:
+          OWNER_BUSINESS_SLUG: happy-pets-demo
+          OWNER_EMAIL: groomer@happy-pets.demo
+          OWNER_PASSWORD: E2e-owner-password-2026
+          OWNER_FIRST_NAME: Dana
+          OWNER_LAST_NAME: Groomer
       - run: npm run api:test:integration
         env:
           NODE_ENV: test
@@ -63,6 +69,20 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
+      - name: Start NestJS API
+        run: |
+          npm --prefix apps/api run start > /tmp/shiftsync-api.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/api/v1/health/ready; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/shiftsync-api.log
+          exit 1
       - run: npm run e2e
         env:
           CI: true
+          E2E_REAL_STACK: true
+          E2E_OWNER_EMAIL: groomer@happy-pets.demo
+          E2E_OWNER_PASSWORD: E2e-owner-password-2026
