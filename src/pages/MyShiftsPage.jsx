@@ -92,6 +92,23 @@ const MyShiftsPage = () => {
                     <div className="task-details">
                       <h3>{task.serviceName}</h3>
                       <p>לקוח/ה: <strong>{customerName}</strong></p>
+                      {task.appointmentStepCount > 1 && (
+                        <div className="handoff-context" aria-label="הקשר לביקור משולב">
+                          <strong>שלב {task.sequenceNumber} מתוך {task.appointmentStepCount}</strong>
+                          {task.previousServiceName && (
+                            <span>
+                              לפני: {task.previousServiceName} — {task.previousProviderFirstName}{' '}
+                              {task.previousProviderLastName}
+                            </span>
+                          )}
+                          {task.nextServiceName && (
+                            <span>
+                              אחרי: {task.nextServiceName} — {task.nextProviderFirstName}{' '}
+                              {task.nextProviderLastName}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <button
                         className={`status-btn ${task.status.toLowerCase()}`}
                         onClick={() => advanceStatus(task)}

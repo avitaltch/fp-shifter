@@ -15,6 +15,14 @@ test.describe('provider operations', () => {
       startsAt,
       endsAt: new Date(Date.parse(startsAt) + 45 * 60_000).toISOString(),
       timezone: 'Asia/Jerusalem',
+      sequenceNumber: 1,
+      appointmentStepCount: 2,
+      previousServiceName: null,
+      previousProviderFirstName: null,
+      previousProviderLastName: null,
+      nextServiceName: 'חיסון',
+      nextProviderFirstName: 'נועה',
+      nextProviderLastName: 'כהן',
     };
     await page.route('**/api/v1/operator/me/steps?**', (route) => fulfillJson(route, [step]));
     await page.route('**/api/v1/operator/steps/step-1/status', (route) =>
@@ -22,6 +30,7 @@ test.describe('provider operations', () => {
     );
     await page.goto('/employee/shifts');
     await expect(page.getByText('טיפוח')).toBeVisible();
+    await expect(page.getByText(/אחרי: חיסון/)).toBeVisible();
     await page.getByRole('button', { name: 'מתוכנן - לחץ להתחלה' }).click();
     await expect(page.getByRole('button', { name: 'בביצוע - לחץ לסיום' })).toBeVisible();
   });

@@ -63,3 +63,18 @@
     justify-content: center;
   }
 }
+.handoff-context {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.6rem 0;
+  padding: 0.65rem 0.75rem;
+  border-inline-start: 3px solid var(--primary);
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+
+.handoff-context strong {
+  color: var(--primary-strong);
+}

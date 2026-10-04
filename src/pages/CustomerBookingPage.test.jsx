@@ -33,6 +33,13 @@ const service = {
   default_duration: 60,
   currency: 'ILS',
 };
+const secondService = {
+  id: 'service-2',
+  name: 'חיסון',
+  base_price: 80,
+  default_duration: 15,
+  currency: 'ILS',
+};
 const catalog = {
   business: { slug: 'happy-pets-demo', name: 'Happy Pets' },
   location: { name: 'תל אביב', timezone: 'Asia/Jerusalem' },
@@ -90,6 +97,29 @@ describe('CustomerBookingPage', () => {
       )
     );
     expect(await screen.findByRole('button', { name: '10:00' })).toBeInTheDocument();
+  });
+
+  it('reorders and explicitly duplicates services before searching', async () => {
+    loadPublicBookingCatalog.mockResolvedValue({
+      ...catalog,
+      services: [service, secondService],
+    });
+    renderPage();
+    fireEvent.click(await screen.findByText(service.name));
+    fireEvent.click(screen.getByText(secondService.name));
+    fireEvent.click(screen.getByRole('button', { name: `הוסף את ${service.name} פעם נוספת` }));
+    fireEvent.click(screen.getAllByRole('button', { name: `הזז את ${service.name} למעלה` })[1]);
+    fireEvent.change(screen.getByLabelText('תאריך הביקור'), {
+      target: { value: visitDate },
+    });
+    await waitFor(() =>
+      expect(loadPublicBookingSlots).toHaveBeenCalledWith(
+        'happy-pets-demo',
+        visitDate,
+        ['service-1', 'service-1', 'service-2'],
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      )
+    );
   });
 
   it('submits an idempotent booking and keeps bearer capability out of storage', async () => {

@@ -9,7 +9,19 @@ import {
 import { friendlyError } from '../lib/errors';
 import { toIsraeliE164 } from '../lib/phone';
 import { idempotencyAttempt } from '../lib/idempotency';
-import { Bell, Check, Clock, Calendar as CalendarIcon, User, Scissors, Sparkles } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Bell,
+  Calendar as CalendarIcon,
+  Check,
+  Clock,
+  Copy,
+  Scissors,
+  Sparkles,
+  Trash2,
+  User,
+} from 'lucide-react';
 import {
   businessDateRangeToInstants,
   jerusalemTodayString,
@@ -23,6 +35,8 @@ import EmptyState from '../components/EmptyState/EmptyState';
 import LoadingSpinner from '../components/LoadingSpinner/LoadingSpinner';
 import { BOOKING_CONFIRMATION_KEY } from './BookingSuccessPage';
 import './CustomerBookingPage.css';
+
+const MAX_SERVICES_PER_VISIT = 6;
 
 const CustomerBookingPage = () => {
   const navigate = useNavigate();
@@ -130,10 +144,49 @@ const CustomerBookingPage = () => {
 
   const toggleService = (id) => {
     setWaitlistMessage(null);
+    if (selectedServices.includes(id)) {
+      setSubmitError(null);
+      setSelectedServices((current) => current.filter((serviceId) => serviceId !== id));
+      return;
+    }
+    if (selectedServices.length >= MAX_SERVICES_PER_VISIT) {
+      setSubmitError(`אפשר לבחור עד ${MAX_SERVICES_PER_VISIT} שירותים בביקור.`);
+      return;
+    }
     setSubmitError(null);
-    setSelectedServices((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
+    setSelectedServices((current) => [...current, id]);
+  };
+
+  const removeServiceAt = (index) => {
+    setWaitlistMessage(null);
+    setSubmitError(null);
+    setSelectedServices((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const duplicateServiceAt = (index) => {
+    setWaitlistMessage(null);
+    if (selectedServices.length >= MAX_SERVICES_PER_VISIT) {
+      setSubmitError(`אפשר לבחור עד ${MAX_SERVICES_PER_VISIT} שירותים בביקור.`);
+      return;
+    }
+    setSubmitError(null);
+    setSelectedServices((current) => [
+        ...current.slice(0, index + 1),
+        current[index],
+        ...current.slice(index + 1),
+    ]);
+  };
+
+  const moveService = (index, offset) => {
+    const target = index + offset;
+    if (target < 0 || target >= selectedServices.length) return;
+    setWaitlistMessage(null);
+    setSubmitError(null);
+    setSelectedServices((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   };
 
   const handleBooking = async (e) => {
@@ -315,6 +368,7 @@ const CustomerBookingPage = () => {
             <div className="services-grid">
               {serviceTypes.map((service) => {
                 const selected = selectedServices.includes(service.id);
+                const selectedCount = selectedServices.filter((id) => id === service.id).length;
                 return (
                   <button
                     type="button"
@@ -324,8 +378,8 @@ const CustomerBookingPage = () => {
                     aria-pressed={selected}
                   >
                     {selected && (
-                      <span className="service-order" aria-label={`שירות מספר ${selectedServices.indexOf(service.id) + 1}`}>
-                        {selectedServices.indexOf(service.id) + 1}
+                      <span className="service-order" aria-label={`${service.name} נבחר ${selectedCount} פעמים`}>
+                        {selectedCount > 1 ? `×${selectedCount}` : selectedServices.indexOf(service.id) + 1}
                       </span>
                     )}
                     <div className="service-info">
@@ -343,6 +397,61 @@ const CustomerBookingPage = () => {
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {selectedServices.length > 0 && (
+            <div className="service-sequence" aria-label="סדר השירותים בביקור">
+              <div className="service-sequence-heading">
+                <strong>סדר הביקור</strong>
+                <span>אפשר לשנות סדר או להוסיף את אותו שירות שוב.</span>
+              </div>
+              <ol>
+                {selectedServices.map((serviceId, index) => {
+                  const service = serviceTypes.find((item) => item.id === serviceId);
+                  if (!service) return null;
+                  return (
+                    <li key={`${serviceId}-${index}`}>
+                      <span className="sequence-number">{index + 1}</span>
+                      <span className="sequence-name">{service.name}</span>
+                      <div className="sequence-actions">
+                        <button
+                          type="button"
+                          onClick={() => moveService(index, -1)}
+                          disabled={index === 0}
+                          aria-label={`הזז את ${service.name} למעלה`}
+                        >
+                          <ArrowUp size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveService(index, 1)}
+                          disabled={index === selectedServices.length - 1}
+                          aria-label={`הזז את ${service.name} למטה`}
+                        >
+                          <ArrowDown size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => duplicateServiceAt(index)}
+                          disabled={selectedServices.length >= MAX_SERVICES_PER_VISIT}
+                          aria-label={`הוסף את ${service.name} פעם נוספת`}
+                        >
+                          <Copy size={16} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="sequence-remove"
+                          onClick={() => removeServiceAt(index)}
+                          aria-label={`הסר את ${service.name}`}
+                        >
+                          <Trash2 size={16} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
             </div>
           )}
         </section>

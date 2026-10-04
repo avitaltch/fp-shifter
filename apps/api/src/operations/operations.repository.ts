@@ -120,12 +120,32 @@ export class OperationsRepository {
               l.name as "locationName",
               l.timezone,
               c.first_name as "customerFirstName",
-              c.last_name as "customerLastName"
+              c.last_name as "customerLastName",
+              (select count(*)::integer
+                 from appointment_steps sibling
+                where sibling.business_id = s.business_id
+                  and sibling.appointment_id = s.appointment_id) as "appointmentStepCount",
+              previous_step.service_name_snapshot as "previousServiceName",
+              previous_user.first_name as "previousProviderFirstName",
+              previous_user.last_name as "previousProviderLastName",
+              next_step.service_name_snapshot as "nextServiceName",
+              next_user.first_name as "nextProviderFirstName",
+              next_user.last_name as "nextProviderLastName"
        from appointment_steps s
        join appointments a on a.business_id = s.business_id and a.id = s.appointment_id
        join locations l on l.business_id = s.business_id and l.id = s.location_id
        join customers c on c.business_id = s.business_id and c.id = a.customer_id
        join users u on u.id = s.provider_user_id
+       left join appointment_steps previous_step
+         on previous_step.business_id = s.business_id
+        and previous_step.appointment_id = s.appointment_id
+        and previous_step.sequence_number = s.sequence_number - 1
+       left join users previous_user on previous_user.id = previous_step.provider_user_id
+       left join appointment_steps next_step
+         on next_step.business_id = s.business_id
+        and next_step.appointment_id = s.appointment_id
+        and next_step.sequence_number = s.sequence_number + 1
+       left join users next_user on next_user.id = next_step.provider_user_id
        where s.business_id = $1
          and s.provider_user_id = $2
          and s.starts_at < $4

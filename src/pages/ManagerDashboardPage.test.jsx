@@ -9,6 +9,17 @@ vi.mock('../lib/api', () => ({
   cancelOperatorAppointment: vi.fn(),
 }));
 
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({
+    session: { business: { slug: 'happy-pets-demo' } },
+  }),
+}));
+
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal()),
+  Link: ({ to, ...props }) => <a href={to} {...props} />,
+}));
+
 const buildAppointments = () => {
   const today = todayString();
   const future = addDaysString(2);

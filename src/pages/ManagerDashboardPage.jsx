@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
-import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, CircleAlert, Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Users, Calendar, Clock, ArrowLeft, XCircle, Phone, CircleAlert, Sparkles, Plus } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { listOperatorAppointments, cancelOperatorAppointment } from '../lib/api';
 import { useAsyncData } from '../hooks/useAsyncData';
 import { useAction } from '../hooks/useAction';
@@ -18,6 +20,8 @@ const STATUS_LABELS = {
 };
 
 const ManagerDashboardPage = () => {
+  const { session } = useAuth();
+  const bookingPath = `/book/${session?.business?.slug || ''}`;
   const fetchDashboard = useCallback(
     async () => (await listOperatorAppointments(todayString(), addDaysString(6))).filter(
       (appointment) => appointment.status !== 'Cancelled'
@@ -81,7 +85,12 @@ const ManagerDashboardPage = () => {
           <span className="dashboard-eyebrow"><Sparkles size={14} aria-hidden="true" /> תמונת מצב חיה</span>
           <h1>דאשבורד מנהל - תמונת מצב יומית</h1>
         </div>
-        <p className="date-display">{formatHebrewDate(todayStr)}</p>
+        <div className="dashboard-header-actions">
+          <p className="date-display">{formatHebrewDate(todayStr)}</p>
+          <Link className="btn-primary" to={bookingPath}>
+            <Plus size={17} aria-hidden="true" /> קביעת תור
+          </Link>
+        </div>
       </header>
 
       <Alert type={message?.type}>{message?.text}</Alert>

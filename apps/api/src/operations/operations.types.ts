@@ -45,6 +45,13 @@ export interface ProviderStep extends OperatorAppointmentStep {
   timezone: string;
   customerFirstName: string;
   customerLastName: string;
+  appointmentStepCount: number;
+  previousServiceName: string | null;
+  previousProviderFirstName: string | null;
+  previousProviderLastName: string | null;
+  nextServiceName: string | null;
+  nextProviderFirstName: string | null;
+  nextProviderLastName: string | null;
 }
 
 export interface ReassignmentOption {
