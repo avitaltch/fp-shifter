@@ -1,5 +1,7 @@
 # Development Plan V2
 
+> **Continuation notice (2026-10-04):** execution has advanced beyond several status sections in this document. Continue from [`GOAL_CONTINUATION_PLAN.md`](GOAL_CONTINUATION_PLAN.md), which records the authoritative `897b9fe` baseline, completed scope, remaining work, and restart procedure. The PRD remains the product source of truth.
+
 **Created:** 2026-08-16
 **Status:** Proposed execution baseline
 **Supersedes:** `DEVELOPMENT_PLAN.md` for sequencing and status; the V1 plan remains useful historical context.
